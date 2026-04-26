@@ -20,11 +20,11 @@ ArmorLog is a firearms maintenance and ammunition inventory tracker. It has been
    ```bash
    npm install
    ```
-2. Start the server:
+2. Start the server with automatic restarts:
    ```bash
    npm start
    ```
-   *Note: If you use VS Code, the server will automatically start when you open the folder.*
+   *Note: The server uses `nodemon` to automatically restart whenever `server.js` or files in `public/` are modified. If you use VS Code, this will happen automatically when you open the folder.*
 3. Access the application in your browser at `http://localhost:3000`.
 
 ### Configuration
