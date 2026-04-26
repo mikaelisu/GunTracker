@@ -48,10 +48,14 @@ function migrateData(oldData) {
             manufacturer: parts.manufacturer || 'Unknown',
             model: parts.model || '',
             caliber: gun.caliber || 'Unknown',
+            sku: gun.sku || '',
+            type: gun.type || 'Rifle',
             rounds: gun.rounds || 0,
             lastService: gun.lastService || 0,
+            lastBoltService: gun.lastBoltService || gun.lastService || 0,
             serial: gun.serial || '',
             cleanInterval: gun.cleanInterval || 500,
+            boltCleanInterval: gun.boltCleanInterval || 1000,
             status: gun.status || 'Ready'
         };
     });
@@ -62,6 +66,7 @@ function migrateData(oldData) {
             id: sup.id || Math.random().toString(36).substr(2, 9),
             manufacturer: parts.manufacturer || 'Unknown',
             model: parts.model || '',
+            sku: sup.sku || '',
             calibers: sup.calibers || [],
             rounds: sup.rounds || 0,
             lastService: sup.lastService || 0,
@@ -182,24 +187,37 @@ function renderSettings() {
 }
 
 // Gun Logic
+function toggleBoltField() {
+    const type = document.getElementById('modal-gun-type').value;
+    const boltContainer = document.getElementById('bolt-interval-container');
+    boltContainer.style.display = type === 'Rifle' ? 'block' : 'none';
+}
+
 function openAddGunModal() {
     populateDropdown('modal-gun-make', data.manufacturers);
     populateDropdown('modal-gun-caliber', data.calibers);
     document.getElementById('gun-modal-title').innerText = 'Add New Firearm';
     document.getElementById('edit-gun-id').value = '';
+    document.getElementById('modal-gun-type').value = 'Rifle';
     document.getElementById('modal-gun-model').value = '';
+    document.getElementById('modal-gun-sku').value = '';
     document.getElementById('modal-gun-serial').value = '';
     document.getElementById('modal-gun-interval').value = '500';
+    document.getElementById('modal-gun-bolt-interval').value = '1000';
     document.getElementById('modal-gun-status').value = 'Ready';
+    toggleBoltField();
     openModal('gun-modal');
 }
 
 function saveGun() {
+    const type = document.getElementById('modal-gun-type').value;
     const manufacturer = document.getElementById('modal-gun-make').value;
     const model = document.getElementById('modal-gun-model').value;
     const caliber = document.getElementById('modal-gun-caliber').value;
+    const sku = document.getElementById('modal-gun-sku').value;
     const serial = document.getElementById('modal-gun-serial').value;
     const interval = parseInt(document.getElementById('modal-gun-interval').value);
+    const boltInterval = parseInt(document.getElementById('modal-gun-bolt-interval').value);
     const status = document.getElementById('modal-gun-status').value;
     const editId = document.getElementById('edit-gun-id').value;
 
@@ -207,11 +225,12 @@ function saveGun() {
 
     if (editId) {
         const gun = data.guns.find(g => g.id === editId);
-        Object.assign(gun, { manufacturer, model, caliber, serial, cleanInterval: interval, status });
+        Object.assign(gun, { type, manufacturer, model, caliber, sku, serial, cleanInterval: interval, boltCleanInterval: boltInterval, status });
     } else {
         data.guns.push({
             id: Math.random().toString(36).substr(2, 9),
-            manufacturer, model, caliber, serial, rounds: 0, lastService: 0, cleanInterval: interval, status
+            type, manufacturer, model, caliber, sku, serial, rounds: 0, 
+            lastService: 0, lastBoltService: 0, cleanInterval: interval, boltCleanInterval: boltInterval, status
         });
     }
 
@@ -225,10 +244,14 @@ function editGun(id) {
     populateDropdown('modal-gun-caliber', data.calibers, gun.caliber);
     document.getElementById('gun-modal-title').innerText = 'Edit Firearm';
     document.getElementById('edit-gun-id').value = gun.id;
+    document.getElementById('modal-gun-type').value = gun.type || 'Rifle';
     document.getElementById('modal-gun-model').value = gun.model;
+    document.getElementById('modal-gun-sku').value = gun.sku || '';
     document.getElementById('modal-gun-serial').value = gun.serial;
     document.getElementById('modal-gun-interval').value = gun.cleanInterval;
+    document.getElementById('modal-gun-bolt-interval').value = gun.boltCleanInterval || 1000;
     document.getElementById('modal-gun-status').value = gun.status;
+    toggleBoltField();
     openModal('gun-modal');
 }
 
@@ -246,6 +269,7 @@ function openAddSuppressorModal() {
     document.getElementById('suppressor-modal-title').innerText = 'Add New Suppressor';
     document.getElementById('edit-suppressor-id').value = '';
     document.getElementById('modal-suppressor-model').value = '';
+    document.getElementById('modal-suppressor-sku').value = '';
     document.getElementById('modal-suppressor-serial').value = '';
     document.getElementById('modal-suppressor-interval').value = '1000';
     document.getElementById('modal-suppressor-status').value = 'Ready';
@@ -255,6 +279,7 @@ function openAddSuppressorModal() {
 function saveSuppressor() {
     const manufacturer = document.getElementById('modal-suppressor-make').value;
     const model = document.getElementById('modal-suppressor-model').value;
+    const sku = document.getElementById('modal-suppressor-sku').value;
     const serial = document.getElementById('modal-suppressor-serial').value;
     const interval = parseInt(document.getElementById('modal-suppressor-interval').value);
     const status = document.getElementById('modal-suppressor-status').value;
@@ -266,11 +291,11 @@ function saveSuppressor() {
 
     if (editId) {
         const sup = data.suppressors.find(s => s.id === editId);
-        Object.assign(sup, { manufacturer, model, calibers, serial, cleanInterval: interval, status });
+        Object.assign(sup, { manufacturer, model, sku, calibers, serial, cleanInterval: interval, status });
     } else {
         data.suppressors.push({
             id: Math.random().toString(36).substr(2, 9),
-            manufacturer, model, calibers, serial, rounds: 0, lastService: 0, cleanInterval: interval, status
+            manufacturer, model, sku, calibers, serial, rounds: 0, lastService: 0, cleanInterval: interval, status
         });
     }
 
@@ -285,6 +310,7 @@ function editSuppressor(id) {
     document.getElementById('suppressor-modal-title').innerText = 'Edit Suppressor';
     document.getElementById('edit-suppressor-id').value = sup.id;
     document.getElementById('modal-suppressor-model').value = sup.model;
+    document.getElementById('modal-suppressor-sku').value = sup.sku || '';
     document.getElementById('modal-suppressor-serial').value = sup.serial;
     document.getElementById('modal-suppressor-interval').value = sup.cleanInterval;
     document.getElementById('modal-suppressor-status').value = sup.status;
@@ -379,7 +405,7 @@ function renderDataTable() {
     const query = document.getElementById('table-search').value.toLowerCase();
     const tableBody = document.getElementById('table-body');
     let filteredGuns = data.guns.filter(g => {
-        const searchStr = `${g.manufacturer} ${g.model} ${g.caliber} ${g.serial} ${g.status}`.toLowerCase();
+        const searchStr = `${g.manufacturer} ${g.model} ${g.caliber} ${g.sku} ${g.serial} ${g.status} ${g.type}`.toLowerCase();
         return searchStr.includes(query);
     });
     filteredGuns.sort((a, b) => {
@@ -395,7 +421,9 @@ function renderDataTable() {
         <tr style="cursor:pointer" onclick="editGun('${gun.id}')">
             <td>${gun.manufacturer}</td>
             <td>${gun.model}</td>
+            <td>${gun.type || 'Rifle'}</td>
             <td>${gun.caliber}</td>
+            <td>${gun.sku || ''}</td>
             <td>${gun.serial || 'N/A'}</td>
             <td>${gun.rounds}</td>
             <td>${gun.cleanInterval}</td>
@@ -418,19 +446,36 @@ function render() {
         .map((gun) => {
             const roundsSinceClean = gun.rounds - gun.lastService;
             const needsClean = roundsSinceClean >= gun.cleanInterval;
+            
+            let maintenanceHtml = `
+                Total: ${gun.rounds} | Barrel: ${roundsSinceClean} / ${gun.cleanInterval}<br>
+            `;
+            
+            let buttonHtml = `
+                <button onclick="openSessionModal('${gun.id}')">Log Session</button>
+                <button class="secondary" onclick="data.guns.find(g => g.id === '${gun.id}').lastService=${gun.rounds}; save();">Barrel Cleaned</button>
+            `;
+
+            if (gun.type === 'Rifle') {
+                const roundsSinceBoltClean = gun.rounds - (gun.lastBoltService || 0);
+                const needsBoltClean = roundsSinceBoltClean >= (gun.boltCleanInterval || 1000);
+                maintenanceHtml += `Bolt: ${roundsSinceBoltClean} / ${gun.boltCleanInterval || 1000}<br>`;
+                if (needsBoltClean) maintenanceHtml += '<span class="warning-text">⚠ BOLT NEEDS CLEANING</span><br>';
+                buttonHtml += `<button class="secondary" onclick="data.guns.find(g => g.id === '${gun.id}').lastBoltService=${gun.rounds}; save();">Bolt Cleaned</button>`;
+            }
+
             return `
                 <div class="item-card ${needsClean ? 'warning' : ''}">
-                    <strong>${gun.manufacturer} ${gun.model}</strong>
+                    <strong>${gun.manufacturer} ${gun.model} (${gun.type || 'Rifle'})</strong>
                     <div class="stats">
-                        Caliber: ${gun.caliber}<br>
+                        Caliber: ${gun.caliber} | SKU: ${gun.sku || 'N/A'}<br>
                         SN: ${gun.serial || 'N/A'}<br>
-                        Total: ${gun.rounds} | Since Clean: ${roundsSinceClean} / ${gun.cleanInterval}<br>
+                        ${maintenanceHtml}
                         Status: <span style="color: var(--accent)">${gun.status}</span>
                     </div>
-                    ${needsClean ? '<div class="warning-text">⚠ NEEDS CLEANING</div>' : ''}
+                    ${needsClean ? '<div class="warning-text">⚠ BARREL NEEDS CLEANING</div>' : ''}
                     <div style="margin-top:10px; display:flex; flex-wrap:wrap; gap:5px;">
-                        <button onclick="openSessionModal('${gun.id}')">Log Session</button>
-                        <button class="secondary" onclick="data.guns.find(g => g.id === '${gun.id}').lastService=${gun.rounds}; save();">Cleaned</button>
+                        ${buttonHtml}
                         <button class="secondary" onclick="showTrend('${gun.id}')">📈</button>
                         <button class="secondary" onclick="editGun('${gun.id}')">✎</button>
                         <button class="secondary" onclick="deleteGun('${gun.id}')">🗑</button>
@@ -446,8 +491,8 @@ function render() {
                 <div class="item-card ${needsClean ? 'warning' : ''}">
                     <strong>${sup.manufacturer} ${sup.model}</strong>
                     <div class="stats">
-                        Compat: ${(sup.calibers || []).join(', ') || 'None'}<br>
-                        SN: ${sup.serial || 'N/A'}<br>
+                        Calibers: ${(sup.calibers || []).join(', ') || 'None'}<br>
+                        SKU: ${sup.sku || 'N/A'} | SN: ${sup.serial || 'N/A'}<br>
                         Total: ${sup.rounds} | Since Clean: ${roundsSinceClean} / ${sup.cleanInterval}<br>
                         Status: <span style="color: var(--accent)">${sup.status}</span>
                     </div>

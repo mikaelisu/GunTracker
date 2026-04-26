@@ -83,10 +83,12 @@
                             <tr>
                                 <th style="cursor:pointer" onclick="sortTable('manufacturer')">Manufacturer ↕</th>
                                 <th style="cursor:pointer" onclick="sortTable('model')">Model ↕</th>
+                                <th style="cursor:pointer" onclick="sortTable('type')">Type ↕</th>
                                 <th style="cursor:pointer" onclick="sortTable('caliber')">Caliber ↕</th>
+                                <th style="cursor:pointer" onclick="sortTable('sku')">SKU ↕</th>
                                 <th style="cursor:pointer" onclick="sortTable('serial')">Serial ↕</th>
                                 <th style="cursor:pointer" onclick="sortTable('rounds')">Total Rounds ↕</th>
-                                <th style="cursor:pointer" onclick="sortTable('cleanInterval')">Interval ↕</th>
+                                <th style="cursor:pointer" onclick="sortTable('cleanInterval')">Barrel Int. ↕</th>
                                 <th style="cursor:pointer" onclick="sortTable('status')">Status ↕</th>
                             </tr>
                         </thead>
@@ -138,16 +140,28 @@
         <div class="modal-content">
             <h2 id="gun-modal-title">Add New Firearm</h2>
             <input type="hidden" id="edit-gun-id">
+            <label>Type</label>
+            <select id="modal-gun-type" onchange="toggleBoltField()">
+                <option value="Rifle">Rifle</option>
+                <option value="Pistol">Pistol</option>
+                <option value="Shotgun">Shotgun</option>
+            </select>
             <label>Manufacturer</label>
             <select id="modal-gun-make"></select>
             <label>Model</label>
             <input type="text" id="modal-gun-model" placeholder="e.g. 19 Gen 5">
             <label>Caliber</label>
             <select id="modal-gun-caliber"></select>
+            <label>SKU</label>
+            <input type="text" id="modal-gun-sku" placeholder="e.g. 123-ABC">
             <label>Serial Number</label>
             <input type="text" id="modal-gun-serial" placeholder="Optional">
-            <label>Cleaning Interval (rounds)</label>
+            <label>Barrel Cleaning Interval (rounds)</label>
             <input type="number" id="modal-gun-interval" value="500">
+            <div id="bolt-interval-container">
+                <label>Bolt Cleaning Interval (rounds)</label>
+                <input type="number" id="modal-gun-bolt-interval" value="1000">
+            </div>
             <label>Status</label>
             <select id="modal-gun-status">
                 <option value="Ready">Ready</option>
@@ -173,6 +187,8 @@
             <input type="text" id="modal-suppressor-model" placeholder="e.g. Sandman-S">
             <label>Compatible Calibers</label>
             <div id="modal-suppressor-calibers-list" style="max-height: 150px; overflow-y: auto; background: #252525; padding: 10px; border-radius: 4px; border: 1px solid var(--border); margin-bottom:10px;"></div>
+            <label>SKU</label>
+            <input type="text" id="modal-suppressor-sku" placeholder="e.g. 789-XYZ">
             <label>Serial Number</label>
             <input type="text" id="modal-suppressor-serial" placeholder="Optional">
             <label>Cleaning Interval (rounds)</label>
