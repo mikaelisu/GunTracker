@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ArmorLog | Inventory & Maintenance</title>
+    <link rel="stylesheet" href="css/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>ArmorLog</h1>
+            <div class="stats" id="global-stats"></div>
+        </header>
+
+        <nav class="tabs">
+            <button class="tab-btn active" onclick="switchTab('inventory')">Inventory</button>
+            <button class="tab-btn" onclick="switchTab('history')">History</button>
+            <button class="tab-btn" onclick="switchTab('datatable')">Data Table</button>
+            <button class="tab-btn" onclick="switchTab('dashboard')">Dashboard</button>
+            <button class="tab-btn" onclick="switchTab('settings')">Settings</button>
+        </nav>
+
+        <!-- Inventory Tab -->
+        <div id="inventory" class="tab-content active">
+            <div class="card">
+                <h2>
+                    Firearms
+                    <button onclick="openAddGunModal()">+ Add Firearm</button>
+                </h2>
+                <input type="text" id="gun-search" class="search-box" placeholder="Search firearms..." oninput="render()">
+                <div id="gun-list" class="grid"></div>
+            </div>
+
+            <div class="card">
+                <h2>
+                    Suppressors
+                    <button onclick="openAddSuppressorModal()">+ Add Suppressor</button>
+                </h2>
+                <input type="text" id="suppressor-search" class="search-box" placeholder="Search suppressors..." oninput="render()">
+                <div id="suppressor-list" class="grid"></div>
+            </div>
+
+            <div class="card">
+                <h2>
+                    Ammo Inventory
+                    <button onclick="openAmmoModal()">+ Add Ammo</button>
+                </h2>
+                <input type="text" id="ammo-search" class="search-box" placeholder="Search ammo..." oninput="render()">
+                <div id="ammo-list" class="grid"></div>
+            </div>
+        </div>
+
+        <!-- History Tab -->
+        <div id="history" class="tab-content">
+            <div class="card">
+                <h2>Session History</h2>
+                <div style="overflow-x: auto;">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Firearm</th>
+                                <th>Caliber</th>
+                                <th>Rounds</th>
+                            </tr>
+                        </thead>
+                        <tbody id="history-list"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Data Table Tab -->
+        <div id="datatable" class="tab-content">
+            <div class="card">
+                <h2>Firearms Data Table</h2>
+                <input type="text" id="table-search" class="search-box" placeholder="Filter table..." oninput="renderDataTable()">
+                <div style="overflow-x: auto;">
+                    <table id="main-data-table">
+                        <thead>
+                            <tr>
+                                <th style="cursor:pointer" onclick="sortTable('manufacturer')">Manufacturer ↕</th>
+                                <th style="cursor:pointer" onclick="sortTable('model')">Model ↕</th>
+                                <th style="cursor:pointer" onclick="sortTable('type')">Type ↕</th>
+                                <th style="cursor:pointer" onclick="sortTable('caliber')">Caliber ↕</th>
+                                <th style="cursor:pointer" onclick="sortTable('sku')">SKU ↕</th>
+                                <th style="cursor:pointer" onclick="sortTable('serial')">Serial ↕</th>
+                                <th style="cursor:pointer" onclick="sortTable('rounds')">Total Rounds ↕</th>
+                                <th style="cursor:pointer" onclick="sortTable('cleanInterval')">Barrel Int. ↕</th>
+                                <th style="cursor:pointer" onclick="sortTable('status')">Status ↕</th>
+                            </tr>
+                        </thead>
+                        <tbody id="table-body"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Settings Tab -->
+        <div id="settings" class="tab-content">
+            <div class="grid">
+                <div class="card">
+                    <h2>Manage Manufacturers</h2>
+                    <div style="display:flex; gap:5px; margin-bottom:15px;">
+                        <input type="text" id="new-manufacturer" placeholder="New Manufacturer..." style="margin:0; padding:10px; background:#252525; border:1px solid var(--border); color:var(--text); border-radius:4px; flex-grow:1;">
+                        <button onclick="addItem('manufacturers', 'new-manufacturer')">Add</button>
+                    </div>
+                    <div id="manufacturer-list-mgmt" style="max-height:400px; overflow-y:auto;"></div>
+                </div>
+                <div class="card">
+                    <h2>Manage Calibers</h2>
+                    <div style="display:flex; flex-direction:column; gap:15px; margin-bottom:15px;">
+                        <div>
+                            <label>Units</label>
+                            <div style="display:flex; gap:5px; margin-bottom:10px;">
+                                <input type="text" id="new-unit-name" placeholder="New Unit (e.g. ga)" style="margin:0; padding:10px; background:#252525; border:1px solid var(--border); color:var(--text); border-radius:4px; flex-grow:1;">
+                                <button onclick="addItem('units', 'new-unit-name')">Add</button>
+                            </div>
+                            <div id="unit-list-mgmt" style="display:flex; flex-wrap:wrap; gap:5px; margin-bottom:15px;"></div>
+                        </div>
+                        <hr style="border-color:#333; margin:0;">
+                        <div>
+                            <label>Add Caliber</label>
+                            <div style="display:flex; gap:5px;">
+                                <select id="new-caliber-unit" style="margin:0; width:100px; padding:10px; background:#252525; border:1px solid var(--border); color:var(--text); border-radius:4px;"></select>
+                                <input type="text" id="new-caliber-name" placeholder="e.g. 12 or 9" style="margin:0; padding:10px; background:#252525; border:1px solid var(--border); color:var(--text); border-radius:4px; flex-grow:1;">
+                                <button onclick="addCaliberItem()">Add</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="caliber-list-mgmt" style="max-height:400px; overflow-y:auto;"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Dashboard Tab -->
+        <div id="dashboard" class="tab-content">
+            <div class="grid">
+                <div class="card">
+                    <h2>Rounds Fired per Firearm</h2>
+                    <canvas id="roundsChart"></canvas>
+                </div>
+                <div class="card">
+                    <h2>Current Ammo Inventory</h2>
+                    <canvas id="ammoChart"></canvas>
+                </div>
+                <div class="card">
+                    <h2>Total Ammo Usage by Caliber</h2>
+                    <canvas id="usageChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Gun Modal -->
+    <div id="gun-modal" class="modal">
+        <div class="modal-content">
+            <h2 id="gun-modal-title">Add New Firearm</h2>
+            <input type="hidden" id="edit-gun-id">
+            <label>Type</label>
+            <select id="modal-gun-type" onchange="toggleBoltField()">
+                <option value="Rifle">Rifle</option>
+                <option value="Pistol">Pistol</option>
+                <option value="Shotgun">Shotgun</option>
+            </select>
+            <label>Manufacturer</label>
+            <select id="modal-gun-make"></select>
+            <label>Model</label>
+            <input type="text" id="modal-gun-model" placeholder="e.g. 19 Gen 5">
+            <label>Caliber</label>
+            <select id="modal-gun-caliber" style="margin:5px 0;"></select>
+            <label>SKU</label>
+            <input type="text" id="modal-gun-sku" placeholder="e.g. 123-ABC">
+            <label>Serial Number</label>
+            <input type="text" id="modal-gun-serial" placeholder="Optional">
+            <label>Estimated Initial Rounds (Pre-ArmorLog)</label>
+            <input type="number" id="modal-gun-initial-rounds" value="0">
+            <label>Barrel Cleaning Interval (rounds)</label>
+            <input type="number" id="modal-gun-interval" value="500">
+            <div id="bolt-interval-container">
+                <label>Bolt Cleaning Interval (rounds)</label>
+                <input type="number" id="modal-gun-bolt-interval" value="1000">
+            </div>
+            <label>Status</label>
+            <select id="modal-gun-status">
+                <option value="Ready">Ready</option>
+                <option value="Needs Cleaning">Needs Cleaning</option>
+                <option value="Maintenance">In Maintenance</option>
+                <option value="Stored">Stored</option>
+            </select>
+            <div class="modal-actions">
+                <button class="secondary" onclick="closeModal('gun-modal')">Cancel</button>
+                <button onclick="saveGun()">Save Firearm</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Suppressor Modal -->
+    <div id="suppressor-modal" class="modal">
+        <div class="modal-content">
+            <h2 id="suppressor-modal-title">Add New Suppressor</h2>
+            <input type="hidden" id="edit-suppressor-id">
+            <label>Manufacturer</label>
+            <select id="modal-suppressor-make"></select>
+            <label>Model</label>
+            <input type="text" id="modal-suppressor-model" placeholder="e.g. Sandman-S">
+            <label>Compatible Calibers</label>
+            <div id="modal-suppressor-calibers-list" style="max-height: 150px; overflow-y: auto; background: #252525; padding: 10px; border-radius: 4px; border: 1px solid var(--border); margin-bottom:10px;"></div>
+            <label>SKU</label>
+            <input type="text" id="modal-suppressor-sku" placeholder="e.g. 789-XYZ">
+            <label>Serial Number</label>
+            <input type="text" id="modal-suppressor-serial" placeholder="Optional">
+            <label>Cleaning Interval (rounds)</label>
+            <input type="number" id="modal-suppressor-interval" value="1000">
+            <label>Status</label>
+            <select id="modal-suppressor-status">
+                <option value="Ready">Ready</option>
+                <option value="Needs Cleaning">Needs Cleaning</option>
+                <option value="Maintenance">In Maintenance</option>
+                <option value="Stored">Stored</option>
+            </select>
+            <div class="modal-actions">
+                <button class="secondary" onclick="closeModal('suppressor-modal')">Cancel</button>
+                <button onclick="saveSuppressor()">Save Suppressor</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="ammo-modal" class="modal">
+        <div class="modal-content">
+            <h2>Add / Update Ammo</h2>
+            <label>Caliber</label>
+            <select id="modal-ammo-caliber" style="margin:5px 0;"></select>
+            <label>Quantity to Add</label>
+            <input type="number" id="modal-ammo-qty" placeholder="e.g. 500">
+            <label>Minimum Stock Alert</label>
+            <input type="number" id="modal-ammo-min" value="100">
+            <div class="modal-actions">
+                <button class="secondary" onclick="closeModal('ammo-modal')">Cancel</button>
+                <button onclick="saveAmmo()">Save Ammo</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Session Modal -->
+    <div id="session-modal" class="modal">
+        <div class="modal-content">
+            <h2>Log Shooting Session</h2>
+            <input type="hidden" id="session-gun-id">
+            <p id="session-gun-name" style="font-weight: bold; color: var(--accent);"></p>
+            
+            <label>Date</label>
+            <input type="date" id="session-date">
+            
+            <label>Rounds Fired</label>
+            <input type="number" id="session-rounds" placeholder="How many?">
+            
+            <label>Caliber Used</label>
+            <select id="session-caliber"></select>
+            
+            <label>Suppressor Used (Optional)</label>
+            <select id="session-suppressor">
+                <option value="">None</option>
+            </select>
+            
+            <div class="modal-actions">
+                <button class="secondary" onclick="closeModal('session-modal')">Cancel</button>
+                <button onclick="submitSession()">Log Session</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Trend Modal -->
+    <div id="trend-modal" class="modal">
+        <div class="modal-content" style="max-width: 800px;">
+            <h2 id="trend-title">Round Count Trend</h2>
+            <div style="height: 400px;">
+                <canvas id="trendChart"></canvas>
+            </div>
+            <div class="modal-actions">
+                <button class="secondary" onclick="closeModal('trend-modal')">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Gun Details Modal -->
+    <div id="gun-details-modal" class="modal">
+        <div class="modal-content" style="max-width: 800px; max-height: 80vh; overflow-y: auto;">
+            <h2 id="details-gun-name" style="margin-bottom:5px;"></h2>
+            <p id="details-gun-info" class="stats" style="margin-bottom:20px;"></p>
+            
+            <div class="tabs">
+                <button class="tab-btn active" id="details-history-tab" onclick="switchDetailsTab('history')">Shooting History</button>
+                <button class="tab-btn" id="details-maint-tab" onclick="switchDetailsTab('maint')">Maintenance Logs</button>
+            </div>
+
+            <div id="details-history-content" class="tab-content active">
+                <table>
+                    <thead><tr><th>Date</th><th>Caliber</th><th>Rounds</th><th>Lifetime Total</th></tr></thead>
+                    <tbody id="details-history-list"></tbody>
+                </table>
+            </div>
+
+            <div id="details-maint-content" class="tab-content">
+                <table>
+                    <thead><tr><th>Date</th><th>Type</th><th>Interval Rounds</th><th>Lifetime Total</th><th>Notes</th></tr></thead>
+                    <tbody id="details-maint-list"></tbody>
+                </table>
+            </div>
+
+            <div class="modal-actions">
+                <button class="secondary" onclick="closeModal('gun-details-modal')">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Session Modal -->
+    <div id="edit-session-modal" class="modal">
+        <div class="modal-content">
+            <h2>Edit Session</h2>
+            <input type="hidden" id="edit-session-id">
+            <label>Date</label>
+            <input type="date" id="edit-session-date">
+            <label>Rounds Fired</label>
+            <input type="number" id="edit-session-rounds">
+            <label>Caliber</label>
+            <select id="edit-session-caliber"></select>
+            <div class="modal-actions">
+                <button class="danger" onclick="deleteSession()">Delete Session</button>
+                <div style="flex-grow:1"></div>
+                <button class="secondary" onclick="closeModal('edit-session-modal')">Cancel</button>
+                <button onclick="saveEditedSession()">Save Changes</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Log Maintenance Modal -->
+    <div id="maintenance-modal" class="modal">
+        <div class="modal-content">
+            <h2 id="maint-modal-title">Log Maintenance</h2>
+            <input type="hidden" id="maint-gun-id">
+            <input type="hidden" id="maint-type">
+            
+            <label id="maint-selection-label">Cleaning Performed</label>
+            <div id="maint-selection-container" style="display:flex; gap:20px; background:#252525; padding:15px; border-radius:4px; margin-bottom:15px; border:1px solid var(--border);">
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <input type="checkbox" id="maint-check-barrel" style="width:auto; margin:0;">
+                    <span>Barrel</span>
+                </div>
+                <div id="maint-check-bolt-container" style="display:flex; align-items:center; gap:8px;">
+                    <input type="checkbox" id="maint-check-bolt" style="width:auto; margin:0;">
+                    <span>Bolt</span>
+                </div>
+            </div>
+
+            <label>Date</label>
+            <input type="date" id="maint-date" onchange="updateMaintRounds()">
+            
+            <div id="maint-rounds-display">
+                <label>Rounds Cleaned (Interval)</label>
+                <input type="number" id="maint-rounds" readonly style="background:#1a1a1a; color:#888;">
+                <p id="maint-rounds-hint" style="font-size:0.8em; color:var(--text-muted); margin-top:-5px;"></p>
+            </div>
+
+            <label>Notes</label>
+            <input type="text" id="maint-notes" placeholder="Optional notes...">
+            <div class="modal-actions">
+                <button class="secondary" onclick="closeModal('maintenance-modal')">Cancel</button>
+                <button onclick="saveMaintenance()">Log Service</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/app.js"></script>
+</body>
+</html>

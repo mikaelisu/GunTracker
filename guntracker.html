@@ -39,26 +39,52 @@
     </div>
 
 <script>
-    // Initialize Data from LocalStorage
-    let data = JSON.parse(localStorage.getItem('armorLog')) || { guns: [], ammo: {} };
+    const API_URL = '/api/data';
+    let data = { guns: [], ammo: {} };
 
-    function save() {
-        localStorage.setItem('armorLog', JSON.stringify(data));
-        render();
+    async function load() {
+        try {
+            const response = await fetch(API_URL);
+            data = await response.json();
+            render();
+        } catch (err) {
+            console.error('Failed to load data:', err);
+        }
+    }
+
+    async function save() {
+        try {
+            const response = await fetch(API_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+            if (!response.ok) throw new Error(`Server responded with ${response.status}`);
+            render();
+        } catch (err) {
+            console.error('Failed to save data:', err);
+            alert(`Error saving data: ${err.message}`);
+        }
     }
 
     function addAmmo() {
-        const cal = document.getElementById('new-caliber').value;
-        const qty = parseInt(document.getElementById('new-qty').value);
+        const caliberInput = document.getElementById('new-caliber');
+        const qtyInput = document.getElementById('new-qty');
+        const cal = caliberInput.value.trim();
+        const qty = parseInt(qtyInput.value);
         if(!cal || isNaN(qty)) return;
         data.ammo[cal] = (data.ammo[cal] || 0) + qty;
+        caliberInput.value = '';
+        qtyInput.value = '';
         save();
     }
 
     function addGun() {
-        const name = document.getElementById('gun-name').value;
+        const input = document.getElementById('gun-name');
+        const name = input.value.trim();
         if(!name) return;
         data.guns.push({ name: name, rounds: 0, lastService: 0 });
+        input.value = '';
         save();
     }
 
@@ -93,7 +119,7 @@
         `).join('');
     }
 
-    render();
+    load();
 </script>
 </body>
 </html>

@@ -1,0 +1,88 @@
+name: Version Check and Tag
+
+on:
+  pull_request:
+    branches:
+      - master
+    types: [opened, synchronize, reopened, ready_for_review]
+  push:
+    branches:
+      - master
+
+jobs:
+  check-version:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get current version
+        id: pkg-version
+        run: echo "version=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
+
+      - name: Get latest tag
+        id: last-tag
+        run: |
+          latest_tag=$(git describe --tags --abbrev=0 2>/dev/null || echo "0.0.0")
+          echo "tag=${latest_tag#v}" >> $GITHUB_OUTPUT
+
+      - name: Compare versions
+        run: |
+          NEW_VER="${{ steps.pkg-version.outputs.version }}"
+          OLD_VER="${{ steps.last-tag.outputs.tag }}"
+          
+          echo "New version: $NEW_VER"
+          echo "Last tag: $OLD_VER"
+          
+          if [ "$NEW_VER" == "$OLD_VER" ]; then
+            echo "Error: package.json version ($NEW_VER) has not been incremented since last tag ($OLD_VER)."
+            exit 1
+          fi
+          
+          # Use node to properly compare semver
+          node -e "
+            const semver = (v) => v.split('.').map(Number);
+            const n = semver('$NEW_VER');
+            const o = semver('$OLD_VER');
+            const isGreater = n[0] > o[0] || (n[0] === o[0] && n[1] > o[1]) || (n[0] === o[0] && n[1] === o[1] && n[2] > o[2]);
+            if (!isGreater) {
+              console.error('Error: package.json version must be greater than last tag');
+              process.exit(1);
+            }
+          "
+
+  create-tag:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Get version
+        id: pkg-version
+        run: echo "version=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
+
+      - name: Check if tag exists
+        id: tag-check
+        run: |
+          git fetch --tags
+          if git rev-parse "v${{ steps.pkg-version.outputs.version }}" >/dev/null 2>&1; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create Tag
+        if: steps.tag-check.outputs.exists == 'false'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.git.createRef({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: 'refs/tags/v${{ steps.pkg-version.outputs.version }}',
+              sha: context.sha
+            })
