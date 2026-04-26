@@ -55,41 +55,41 @@ function migrateData(oldData) {
         calibers: [],
         units: oldData.units || ['mm', 'Caliber', 'ga']
     };
-
     data.units = newData.units;
-
-    // Aggressive ID migration
     newData.history = newData.history.map(h => ({ ...h, id: h.id || generateId() }));
     newData.maintenance = newData.maintenance.map(m => ({ ...m, id: m.id || generateId() }));
-
-    newData.guns = newData.guns.map(gun => ({
-        ...gun,
-        id: gun.id || generateId(),
-        caliber: getCaliberFullName(gun.caliber),
-        sku: gun.sku || '',
-        type: gun.type || 'Rifle',
-        rounds: gun.rounds || 0,
-        initialRounds: gun.initialRounds || 0,
-        lastService: Math.min(gun.lastService || 0, (gun.initialRounds || 0) + (gun.rounds || 0)),
-        lastBoltService: Math.min(gun.lastBoltService || gun.lastService || 0, (gun.initialRounds || 0) + (gun.rounds || 0)),
-        serial: gun.serial || '',
-        cleanInterval: gun.cleanInterval || 500,
-        boltCleanInterval: gun.boltCleanInterval || 1000,
-        status: gun.status || 'Ready'
-    }));
-
-    newData.suppressors = newData.suppressors.map(sup => ({
-        ...sup,
-        id: sup.id || generateId(),
-        sku: sup.sku || '',
-        calibers: (sup.calibers || []).map(getCaliberFullName).filter(c => c !== 'Unknown'),
-        rounds: sup.rounds || 0,
-        lastService: Math.min(sup.lastService || 0, sup.rounds || 0),
-        serial: sup.serial || '',
-        cleanInterval: sup.cleanInterval || 1000,
-        status: sup.status || 'Ready'
-    }));
-
+    newData.guns = newData.guns.map(gun => {
+        const rounds = gun.rounds || 0;
+        return {
+            ...gun,
+            id: gun.id || generateId(),
+            caliber: getCaliberFullName(gun.caliber),
+            sku: gun.sku || '',
+            type: gun.type || 'Rifle',
+            rounds: rounds,
+            initialRounds: gun.initialRounds || 0,
+            lastService: Math.min(gun.lastService || 0, (gun.initialRounds || 0) + rounds),
+            lastBoltService: Math.min(gun.lastBoltService || gun.lastService || 0, (gun.initialRounds || 0) + rounds),
+            serial: gun.serial || '',
+            cleanInterval: gun.cleanInterval || 500,
+            boltCleanInterval: gun.boltCleanInterval || 1000,
+            status: gun.status || 'Ready'
+        };
+    });
+    newData.suppressors = newData.suppressors.map(sup => {
+        const rounds = sup.rounds || 0;
+        return {
+            ...sup,
+            id: sup.id || generateId(),
+            sku: sup.sku || '',
+            calibers: (sup.calibers || []).map(getCaliberFullName).filter(c => c !== 'Unknown'),
+            rounds: rounds,
+            lastService: Math.min(sup.lastService || 0, rounds),
+            serial: sup.serial || '',
+            cleanInterval: sup.cleanInterval || 1000,
+            status: sup.status || 'Ready'
+        };
+    });
     if (oldData.ammo) {
         Object.entries(oldData.ammo).forEach(([cal, val]) => {
             const cleanCal = getCaliberFullName(cal);
@@ -97,16 +97,13 @@ function migrateData(oldData) {
             newData.ammo[cleanCal] = typeof val === 'number' ? { qty: val, minStock: 100 } : val;
         });
     }
-
     const caliberSet = new Set();
     newData.guns.forEach(g => caliberSet.add(JSON.stringify(parseCaliber(g.caliber))));
     newData.suppressors.forEach(s => (s.calibers || []).forEach(c => caliberSet.add(JSON.stringify(parseCaliber(c)))));
     Object.keys(newData.ammo).forEach(c => caliberSet.add(JSON.stringify(parseCaliber(c))));
     (oldData.calibers || []).forEach(c => caliberSet.add(JSON.stringify(parseCaliber(c))));
-
     newData.calibers = Array.from(caliberSet).map(s => JSON.parse(s)).filter(c => c.name !== 'Unknown').sort((a,b) => a.name.localeCompare(b.name));
     newData.manufacturers = Array.from(new Set(newData.manufacturers)).filter(m => m && m !== 'undefined' && m !== 'null').sort();
-
     return newData;
 }
 
@@ -125,7 +122,7 @@ async function save() {
     }
 }
 
-// UI Controllers
+// Navigation & Modals
 function switchTab(tabId) {
     document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
     document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
@@ -140,27 +137,18 @@ function switchTab(tabId) {
 function openModal(id) { 
     const el = document.getElementById(id);
     if (el) el.style.display = 'block';
-    else console.error(`Modal ${id} not found`);
 }
 
 function closeModal(id) { 
     const el = document.getElementById(id);
     if (el) el.style.display = 'none';
-    if (id === 'gun-modal') {
-        document.getElementById('edit-gun-id').value = '';
-        document.getElementById('gun-modal-title').innerText = 'Add New Firearm';
-    }
-    if (id === 'suppressor-modal') {
-        document.getElementById('edit-suppressor-id').value = '';
-        document.getElementById('suppressor-modal-title').innerText = 'Add New Suppressor';
-    }
+    if (id === 'gun-modal') { document.getElementById('edit-gun-id').value = ''; document.getElementById('gun-modal-title').innerText = 'Add New Firearm'; }
 }
 
 function populateDropdown(id, items, selectedValue = '') {
     const select = document.getElementById(id);
     if (!select) return;
-    select.innerHTML = '<option value="">-- Select --</option>' + 
-        items.map(item => `<option value="${item}" ${String(item) === String(selectedValue) ? 'selected' : ''}>${item}</option>`).join('');
+    select.innerHTML = '<option value="">-- Select --</option>' + items.map(item => `<option value="${item}" ${String(item) === String(selectedValue) ? 'selected' : ''}>${item}</option>`).join('');
 }
 
 // Gun Details
@@ -176,23 +164,31 @@ function openGunDetails(gunId) {
 
 function switchDetailsTab(tab) {
     const gunId = document.getElementById('gun-details-modal').dataset.gunId;
+    const gun = data.guns.find(g => g.id === gunId);
     document.getElementById('details-history-tab').classList.toggle('active', tab === 'history');
     document.getElementById('details-maint-tab').classList.toggle('active', tab === 'maint');
     document.getElementById('details-history-content').style.display = tab === 'history' ? 'block' : 'none';
     document.getElementById('details-maint-content').style.display = tab === 'maint' ? 'block' : 'none';
 
     if (tab === 'history') {
-        const hist = data.history.filter(h => h.gunId === gunId);
-        document.getElementById('details-history-list').innerHTML = hist.map(h => `
-            <tr style="cursor:pointer" onclick="openEditSessionModal('${h.id}')">
-                <td>${h.date}</td><td>${h.caliber}</td><td>${h.rounds}</td>
-            </tr>`).join('');
+        const hist = data.history.filter(h => h.gunId === gunId).sort((a,b) => new Date(a.date) - new Date(b.date));
+        let cumulative = gun.initialRounds || 0;
+        document.getElementById('details-history-list').innerHTML = hist.map(h => {
+            cumulative += h.rounds;
+            return `<tr style="cursor:pointer" onclick="openEditSessionModal('${h.id}')">
+                <td>${h.date}</td><td>${h.caliber}</td><td>${h.rounds}</td><td>${cumulative}</td>
+            </tr>`;
+        }).reverse().join('');
     } else {
-        const maint = data.maintenance.filter(m => m.gunId === gunId).sort((a,b) => new Date(b.date) - new Date(a.date));
-        document.getElementById('details-maint-list').innerHTML = maint.map(m => `
-            <tr style="cursor:pointer" onclick="openEditMaintenanceModal('${m.id}')">
-                <td>${m.date}</td><td>${m.type}</td><td>${m.roundsAtService}</td><td>${m.notes || ''}</td>
-            </tr>`).join('');
+        const maint = data.maintenance.filter(m => m.gunId === gunId).sort((a,b) => new Date(a.date) - new Date(b.date));
+        document.getElementById('details-maint-list').innerHTML = maint.map(m => {
+            const cumulativeAtMaint = data.history
+                .filter(h => h.gunId === gunId && new Date(h.date) <= new Date(m.date))
+                .reduce((sum, h) => sum + h.rounds, 0) + (gun.initialRounds || 0);
+            return `<tr style="cursor:pointer" onclick="openEditMaintenanceModal('${m.id}')">
+                <td>${m.date}</td><td>${m.type}</td><td>${m.roundsAtService}</td><td>${cumulativeAtMaint}</td><td>${m.notes || ''}</td>
+            </tr>`;
+        }).reverse().join('');
     }
 }
 
@@ -208,12 +204,8 @@ function openEditSessionModal(id) {
 }
 
 function saveEditedSession() {
-    const id = document.getElementById('edit-session-id').value;
-    const session = data.history.find(h => h.id === id);
-    const newDate = document.getElementById('edit-session-date').value;
-    const newRounds = parseInt(document.getElementById('edit-session-rounds').value);
-    const newCal = document.getElementById('edit-session-caliber').value;
-
+    const id = document.getElementById('edit-session-id').value, session = data.history.find(h => h.id === id);
+    const newDate = document.getElementById('edit-session-date').value, newRounds = parseInt(document.getElementById('edit-session-rounds').value), newCal = document.getElementById('edit-session-caliber').value;
     const roundDiff = newRounds - session.rounds;
     const gun = data.guns.find(g => g.id === session.gunId);
     if (gun) {
@@ -221,32 +213,20 @@ function saveEditedSession() {
         gun.lastService = Math.min(gun.lastService, (gun.initialRounds || 0) + gun.rounds);
         gun.lastBoltService = Math.min(gun.lastBoltService, (gun.initialRounds || 0) + gun.rounds);
     }
-
     if (session.suppressorId) {
         const sup = data.suppressors.find(s => s.id === session.suppressorId);
-        if (sup) {
-            sup.rounds += roundDiff;
-            sup.lastService = Math.min(sup.lastService, sup.rounds);
-        }
+        if (sup) { sup.rounds += roundDiff; sup.lastService = Math.min(sup.lastService, sup.rounds); }
     }
-
     if (data.ammo[session.caliber]) data.ammo[session.caliber].qty += session.rounds;
     if (data.ammo[newCal]) data.ammo[newCal].qty -= newRounds;
-
-    session.date = newDate;
-    session.rounds = newRounds;
-    session.caliber = newCal;
+    session.date = newDate; session.rounds = newRounds; session.caliber = newCal;
     data.history.sort((a,b) => new Date(b.date) - new Date(a.date));
-
-    closeModal('edit-session-modal');
-    save();
+    closeModal('edit-session-modal'); save();
 }
 
 function deleteSession() {
-    const id = document.getElementById('edit-session-id').value;
-    const session = data.history.find(h => h.id === id);
+    const id = document.getElementById('edit-session-id').value, session = data.history.find(h => h.id === id);
     if (!confirm('Delete this session?')) return;
-
     const gun = data.guns.find(g => g.id === session.gunId);
     if (gun) {
         gun.rounds -= session.rounds;
@@ -255,16 +235,11 @@ function deleteSession() {
     }
     if (session.suppressorId) {
         const sup = data.suppressors.find(s => s.id === session.suppressorId);
-        if (sup) {
-            sup.rounds -= session.rounds;
-            sup.lastService = Math.min(sup.lastService, sup.rounds);
-        }
+        if (sup) { sup.rounds -= session.rounds; sup.lastService = Math.min(sup.lastService, sup.rounds); }
     }
     if (data.ammo[session.caliber]) data.ammo[session.caliber].qty += session.rounds;
-
     data.history = data.history.filter(h => h.id !== id);
-    closeModal('edit-session-modal');
-    save();
+    closeModal('edit-session-modal'); save();
 }
 
 // Maintenance Logic
@@ -297,10 +272,8 @@ function openMaintenanceModal(gunId) {
     document.getElementById('maint-check-bolt').checked = (gun.type === 'Rifle');
     document.getElementById('maint-date').valueAsDate = new Date();
     document.getElementById('maint-modal-title').innerText = `Log Maintenance`;
-    
     document.getElementById('maint-selection-label').style.display = 'block';
     document.getElementById('maint-selection-container').style.display = 'flex';
-
     const footer = document.querySelector('#maintenance-modal .modal-actions');
     footer.innerHTML = `<button class="secondary" onclick="closeModal('maintenance-modal')">Cancel</button><button onclick="saveMaintenance()">Log Service</button>`;
     updateMaintRounds();
@@ -308,23 +281,16 @@ function openMaintenanceModal(gunId) {
 }
 
 function openEditMaintenanceModal(id) {
-    console.log(`Opening edit for maintenance ID: ${id}`);
     const maint = data.maintenance.find(m => m.id === id);
-    if (!maint) {
-        console.error(`Maintenance record with ID ${id} not found in data.maintenance`);
-        return;
-    }
-    
+    if (!maint) return;
     document.getElementById('maint-gun-id').value = maint.gunId;
     document.getElementById('maint-type').value = maint.type;
     document.getElementById('maint-date').value = maint.date;
     document.getElementById('maint-rounds').value = maint.roundsAtService;
     document.getElementById('maint-notes').value = maint.notes || '';
     document.getElementById('maint-modal-title').innerText = `Edit ${maint.type} Maintenance`;
-    
     document.getElementById('maint-selection-label').style.display = 'none';
     document.getElementById('maint-selection-container').style.display = 'none';
-
     const footer = document.querySelector('#maintenance-modal .modal-actions');
     footer.innerHTML = `<button class="danger" onclick="deleteMaintenance('${id}')">Delete Record</button><div style="flex-grow:1"></div><button class="secondary" onclick="closeModal('maintenance-modal')">Cancel</button><button onclick="saveEditedMaintenance('${id}')">Save Changes</button>`;
     openModal('maintenance-modal');
