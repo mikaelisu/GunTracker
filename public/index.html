@@ -45,7 +45,7 @@
             <div class="card">
                 <h2>
                     Ammo Inventory
-                    <button onclick="openModal('ammo-modal')">+ Add Ammo</button>
+                    <button onclick="openAmmoModal()">+ Add Ammo</button>
                 </h2>
                 <input type="text" id="ammo-search" class="search-box" placeholder="Search ammo..." oninput="render()">
                 <div id="ammo-list" class="grid"></div>
@@ -111,9 +111,24 @@
                 </div>
                 <div class="card">
                     <h2>Manage Calibers</h2>
-                    <div style="display:flex; gap:5px; margin-bottom:15px;">
-                        <input type="text" id="new-caliber-name" placeholder="New Caliber..." style="margin:0; padding:10px; background:#252525; border:1px solid var(--border); color:var(--text); border-radius:4px; flex-grow:1;">
-                        <button onclick="addItem('calibers', 'new-caliber-name')">Add</button>
+                    <div style="display:flex; flex-direction:column; gap:15px; margin-bottom:15px;">
+                        <div>
+                            <label>Units</label>
+                            <div style="display:flex; gap:5px; margin-bottom:10px;">
+                                <input type="text" id="new-unit-name" placeholder="New Unit (e.g. ga)" style="margin:0; padding:10px; background:#252525; border:1px solid var(--border); color:var(--text); border-radius:4px; flex-grow:1;">
+                                <button onclick="addItem('units', 'new-unit-name')">Add</button>
+                            </div>
+                            <div id="unit-list-mgmt" style="display:flex; flex-wrap:wrap; gap:5px; margin-bottom:15px;"></div>
+                        </div>
+                        <hr style="border-color:#333; margin:0;">
+                        <div>
+                            <label>Add Caliber</label>
+                            <div style="display:flex; gap:5px;">
+                                <select id="new-caliber-unit" style="margin:0; width:100px; padding:10px; background:#252525; border:1px solid var(--border); color:var(--text); border-radius:4px;"></select>
+                                <input type="text" id="new-caliber-name" placeholder="e.g. 12 or 9" style="margin:0; padding:10px; background:#252525; border:1px solid var(--border); color:var(--text); border-radius:4px; flex-grow:1;">
+                                <button onclick="addCaliberItem()">Add</button>
+                            </div>
+                        </div>
                     </div>
                     <div id="caliber-list-mgmt" style="max-height:400px; overflow-y:auto;"></div>
                 </div>
@@ -128,8 +143,12 @@
                     <canvas id="roundsChart"></canvas>
                 </div>
                 <div class="card">
-                    <h2>Ammo Distribution</h2>
+                    <h2>Current Ammo Inventory</h2>
                     <canvas id="ammoChart"></canvas>
+                </div>
+                <div class="card">
+                    <h2>Total Ammo Usage by Caliber</h2>
+                    <canvas id="usageChart"></canvas>
                 </div>
             </div>
         </div>
@@ -151,7 +170,7 @@
             <label>Model</label>
             <input type="text" id="modal-gun-model" placeholder="e.g. 19 Gen 5">
             <label>Caliber</label>
-            <select id="modal-gun-caliber"></select>
+            <select id="modal-gun-caliber" style="margin:5px 0;"></select>
             <label>SKU</label>
             <input type="text" id="modal-gun-sku" placeholder="e.g. 123-ABC">
             <label>Serial Number</label>
@@ -207,12 +226,11 @@
         </div>
     </div>
 
-    <!-- Ammo Modal -->
     <div id="ammo-modal" class="modal">
         <div class="modal-content">
             <h2>Add / Update Ammo</h2>
             <label>Caliber</label>
-            <select id="modal-ammo-cal"></select>
+            <select id="modal-ammo-caliber" style="margin:5px 0;"></select>
             <label>Quantity to Add</label>
             <input type="number" id="modal-ammo-qty" placeholder="e.g. 500">
             <label>Minimum Stock Alert</label>
@@ -261,6 +279,76 @@
             </div>
             <div class="modal-actions">
                 <button class="secondary" onclick="closeModal('trend-modal')">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Gun Details Modal -->
+    <div id="gun-details-modal" class="modal">
+        <div class="modal-content" style="max-width: 800px; max-height: 80vh; overflow-y: auto;">
+            <h2 id="details-gun-name" style="margin-bottom:5px;"></h2>
+            <p id="details-gun-info" class="stats" style="margin-bottom:20px;"></p>
+            
+            <div class="tabs">
+                <button class="tab-btn active" id="details-history-tab" onclick="switchDetailsTab('history')">Shooting History</button>
+                <button class="tab-btn" id="details-maint-tab" onclick="switchDetailsTab('maint')">Maintenance Logs</button>
+            </div>
+
+            <div id="details-history-content" class="tab-content active">
+                <table>
+                    <thead><tr><th>Date</th><th>Caliber</th><th>Rounds</th></tr></thead>
+                    <tbody id="details-history-list"></tbody>
+                </table>
+            </div>
+
+            <div id="details-maint-content" class="tab-content">
+                <table>
+                    <thead><tr><th>Date</th><th>Type</th><th>Rounds</th><th>Notes</th></tr></thead>
+                    <tbody id="details-maint-list"></tbody>
+                </table>
+            </div>
+
+            <div class="modal-actions">
+                <button class="secondary" onclick="closeModal('gun-details-modal')">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Session Modal -->
+    <div id="edit-session-modal" class="modal">
+        <div class="modal-content">
+            <h2>Edit Session</h2>
+            <input type="hidden" id="edit-session-id">
+            <label>Date</label>
+            <input type="date" id="edit-session-date">
+            <label>Rounds Fired</label>
+            <input type="number" id="edit-session-rounds">
+            <label>Caliber</label>
+            <select id="edit-session-caliber"></select>
+            <div class="modal-actions">
+                <button class="danger" onclick="deleteSession()">Delete Session</button>
+                <div style="flex-grow:1"></div>
+                <button class="secondary" onclick="closeModal('edit-session-modal')">Cancel</button>
+                <button onclick="saveEditedSession()">Save Changes</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Log Maintenance Modal -->
+    <div id="maintenance-modal" class="modal">
+        <div class="modal-content">
+            <h2 id="maint-modal-title">Log Maintenance</h2>
+            <input type="hidden" id="maint-gun-id">
+            <input type="hidden" id="maint-type">
+            <label>Date</label>
+            <input type="date" id="maint-date" onchange="updateMaintRounds()">
+            <label>Rounds Cleaned (Interval)</label>
+            <input type="number" id="maint-rounds" readonly style="background:#1a1a1a; color:#888;">
+            <label>Notes</label>
+            <input type="text" id="maint-notes" placeholder="Optional notes...">
+            <div class="modal-actions">
+                <button class="secondary" onclick="closeModal('maintenance-modal')">Cancel</button>
+                <button onclick="saveMaintenance()">Log Service</button>
             </div>
         </div>
     </div>
