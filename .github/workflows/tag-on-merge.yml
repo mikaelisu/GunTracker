@@ -25,7 +25,8 @@ jobs:
       - name: Get latest tag
         id: last-tag
         run: |
-          latest_tag=$(git describe --tags --abbrev=0 2>/dev/null || echo "0.0.0")
+          latest_tag=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          # Strip 'v' from tag name for comparison
           echo "tag=${latest_tag#v}" >> $GITHUB_OUTPUT
 
       - name: Compare versions
@@ -37,7 +38,7 @@ jobs:
           echo "Last tag: $OLD_VER"
           
           if [ "$NEW_VER" == "$OLD_VER" ]; then
-            echo "Error: package.json version ($NEW_VER) has not been incremented since last tag ($OLD_VER)."
+            echo "Error: package.json version ($NEW_VER) has not been incremented since last tag (v$OLD_VER)."
             exit 1
           fi
           
@@ -48,13 +49,13 @@ jobs:
             const o = semver('$OLD_VER');
             const isGreater = n[0] > o[0] || (n[0] === o[0] && n[1] > o[1]) || (n[0] === o[0] && n[1] === o[1] && n[2] > o[2]);
             if (!isGreater) {
-              console.error('Error: package.json version must be greater than last tag');
+              console.error('Error: package.json version ($NEW_VER) must be greater than last tag (v$OLD_VER)');
               process.exit(1);
             }
           "
 
   create-tag:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -65,24 +66,23 @@ jobs:
         id: pkg-version
         run: echo "version=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
 
-      - name: Check if tag exists
-        id: tag-check
-        run: |
-          git fetch --tags
-          if git rev-parse "v${{ steps.pkg-version.outputs.version }}" >/dev/null 2>&1; then
-            echo "exists=true" >> $GITHUB_OUTPUT
-          else
-            echo "exists=false" >> $GITHUB_OUTPUT
-          fi
-
       - name: Create Tag
-        if: steps.tag-check.outputs.exists == 'false'
         uses: actions/github-script@v7
         with:
           script: |
-            github.rest.git.createRef({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              ref: 'refs/tags/v${{ steps.pkg-version.outputs.version }}',
-              sha: context.sha
-            })
+            const tag = `v${{ steps.pkg-version.outputs.version }}`;
+            try {
+              await github.rest.git.createRef({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                ref: `refs/tags/${tag}`,
+                sha: context.sha
+              });
+              console.log(`Successfully created tag ${tag}`);
+            } catch (e) {
+              if (e.status === 422) {
+                console.log(`Tag ${tag} already exists. Skipping.`);
+              } else {
+                throw e;
+              }
+            }
