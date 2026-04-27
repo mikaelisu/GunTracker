@@ -6,6 +6,7 @@
     <title>ArmorLog | Inventory & Maintenance</title>
     <link rel="stylesheet" href="css/style.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom"></script>
 </head>
 <body>
     <div class="container">
@@ -18,7 +19,8 @@
             <button class="tab-btn active" onclick="switchTab('inventory')">Inventory</button>
             <button class="tab-btn" onclick="switchTab('history')">History</button>
             <button class="tab-btn" onclick="switchTab('datatable')">Data Table</button>
-            <button class="tab-btn" onclick="switchTab('dashboard')">Dashboard</button>
+            <button class="tab-btn" onclick="switchTab('dashboard')">Gun Dashboard</button>
+            <button class="tab-btn" onclick="switchTab('ammodashboard')">Ammo Dashboard</button>
             <button class="tab-btn" onclick="switchTab('settings')">Settings</button>
         </nav>
 
@@ -30,7 +32,7 @@
                     <button onclick="openAddGunModal()">+ Add Firearm</button>
                 </h2>
                 <input type="text" id="gun-search" class="search-box" placeholder="Search firearms..." oninput="render()">
-                <div id="gun-list" class="grid"></div>
+                <div id="gun-list"></div>
             </div>
 
             <div class="card">
@@ -40,6 +42,15 @@
                 </h2>
                 <input type="text" id="suppressor-search" class="search-box" placeholder="Search suppressors..." oninput="render()">
                 <div id="suppressor-list" class="grid"></div>
+            </div>
+
+            <div class="card">
+                <h2>
+                    Optics
+                    <button onclick="openAddOpticModal()">+ Add Optic</button>
+                </h2>
+                <input type="text" id="optic-search" class="search-box" placeholder="Search optics..." oninput="render()">
+                <div id="optic-list" class="grid"></div>
             </div>
 
             <div class="card">
@@ -135,20 +146,40 @@
             </div>
         </div>
 
-        <!-- Dashboard Tab -->
+        <!-- Gun Dashboard Tab -->
         <div id="dashboard" class="tab-content">
+            <div style="display:flex; flex-direction:column; gap:20px;">
+                <div class="card">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+                        <h2 style="margin:0;">Rounds Fired per Firearm</h2>
+                        <select id="chart-type-filter" onchange="updateCharts()" style="width:auto; margin:0; padding:5px;">
+                            <option value="All">All Types</option>
+                            <option value="Rifle">Rifles</option>
+                            <option value="Pistol">Pistols</option>
+                            <option value="Shotgun">Shotguns</option>
+                        </select>
+                    </div>
+                    <div style="height: 400px; position: relative;">
+                        <canvas id="roundsChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Ammo Dashboard Tab -->
+        <div id="ammodashboard" class="tab-content">
             <div class="grid">
                 <div class="card">
-                    <h2>Rounds Fired per Firearm</h2>
-                    <canvas id="roundsChart"></canvas>
-                </div>
-                <div class="card">
                     <h2>Current Ammo Inventory</h2>
-                    <canvas id="ammoChart"></canvas>
+                    <div style="height: 400px; position: relative;">
+                        <canvas id="ammoChart"></canvas>
+                    </div>
                 </div>
                 <div class="card">
-                    <h2>Total Ammo Usage by Caliber</h2>
-                    <canvas id="usageChart"></canvas>
+                    <h2>Total Ammo Consumed by Caliber</h2>
+                    <div style="height: 400px; position: relative;">
+                        <canvas id="usageChart"></canvas>
+                    </div>
                 </div>
             </div>
         </div>
@@ -224,6 +255,62 @@
             <div class="modal-actions">
                 <button class="secondary" onclick="closeModal('suppressor-modal')">Cancel</button>
                 <button onclick="saveSuppressor()">Save Suppressor</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Optic Modal -->
+    <div id="optic-modal" class="modal">
+        <div class="modal-content" style="max-width: 800px; max-height: 90vh; overflow-y: auto;">
+            <h2 id="optic-modal-title">Add New Optic</h2>
+            <input type="hidden" id="edit-optic-id">
+            <div style="display:flex; flex-wrap:wrap; gap:20px;">
+                <!-- Left Column: Core Info -->
+                <div style="flex: 1; min-width: 300px;">
+                    <label>Manufacturer</label>
+                    <select id="modal-optic-make"></select>
+                    <label>Model</label>
+                    <input type="text" id="modal-optic-model" placeholder="e.g. Romeo 5">
+                    
+                    <label>Status</label>
+                    <select id="modal-optic-status">
+                        <option value="Ready">Ready</option>
+                        <option value="Maintenance">In Maintenance</option>
+                        <option value="Stored">Stored</option>
+                    </select>
+
+                    <div style="margin-top: 15px; padding: 10px; background: #252525; border-radius: 4px; cursor: pointer; border: 1px solid var(--border);" onclick="toggleOpticAdvanced()">
+                        <strong style="display:flex; justify-content:space-between; align-items:center;">Advanced Options (SKU, Serial) <span id="optic-advanced-icon">▼</span></strong>
+                    </div>
+                    <div id="optic-advanced-section" style="display:none; padding: 10px; background: #2a2a2a; border-radius: 0 0 4px 4px; margin-top: -5px; border: 1px solid var(--border); border-top: none;">
+                        <label>SKU</label>
+                        <input type="text" id="modal-optic-sku" placeholder="e.g. SIG-R5">
+                        <label>Serial Number</label>
+                        <input type="text" id="modal-optic-serial" placeholder="Optional">
+                    </div>
+                </div>
+
+                <!-- Right Column: Battery -->
+                <div style="flex: 1; min-width: 300px;">
+                    <div style="display:flex; align-items:center; gap:8px; margin-bottom:15px; padding:10px; background:#252525; border-radius:4px; border:1px solid var(--border);">
+                        <input type="checkbox" id="modal-optic-has-battery" style="width:auto; margin:0;" onchange="toggleOpticBattery()">
+                        <span style="font-weight:bold;">Uses Battery</span>
+                    </div>
+
+                    <div id="optic-battery-section" style="display:none; padding:10px; border: 1px dashed #444; border-radius:4px;">
+                        <label>Battery Type</label>
+                        <input type="text" id="modal-optic-battery" placeholder="e.g. CR2032">
+                        <label>Last Checked</label>
+                        <input type="date" id="modal-optic-last-checked">
+                        <label>Last Changed</label>
+                        <input type="date" id="modal-optic-last-changed">
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal-actions" style="margin-top:20px; padding-top:20px; border-top: 1px solid var(--border);">
+                <button class="secondary" onclick="closeModal('optic-modal')">Cancel</button>
+                <button onclick="saveOptic()">Save Optic</button>
             </div>
         </div>
     </div>

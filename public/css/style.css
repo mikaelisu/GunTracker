@@ -20,7 +20,7 @@ body {
 }
 
 .container {
-    max-width: 900px;
+    max-width: 1400px;
     margin: 0 auto;
     padding: 20px;
 }
@@ -127,6 +127,33 @@ button.danger { background: var(--danger); color: white; }
 
 .stats { font-size: 0.85em; color: var(--text-muted); }
 .warning-text { color: var(--danger); font-weight: bold; font-size: 0.8em; }
+
+/* Grouping */
+.inventory-group {
+    margin-bottom: 30px;
+}
+
+.group-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #333;
+    padding: 10px 15px;
+    border-radius: 4px;
+    cursor: pointer;
+    margin-bottom: 15px;
+    border-left: 4px solid var(--accent);
+}
+
+.group-header:hover { background: #444; }
+
+.group-content {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 20px;
+}
+
+.group-content.collapsed { display: none; }
 
 /* Modals */
 .modal {

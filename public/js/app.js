@@ -1,7 +1,8 @@
 const API_URL = '/api/data';
-let data = { guns: [], suppressors: [], ammo: {}, history: [], manufacturers: [], calibers: [], units: [], maintenance: [] };
+let data = { guns: [], suppressors: [], optics: [], ammo: {}, history: [], manufacturers: [], calibers: [], units: [], maintenance: [] };
 let charts = {};
 let tableSort = { column: 'manufacturer', direction: 'asc' };
+let collapsedGroups = {};
 
 async function load() {
     try {
@@ -48,6 +49,7 @@ function migrateData(oldData) {
     const newData = {
         guns: oldData.guns || [],
         suppressors: oldData.suppressors || [],
+        optics: oldData.optics || [],
         ammo: {},
         history: oldData.history || [],
         maintenance: oldData.maintenance || [],
@@ -90,6 +92,16 @@ function migrateData(oldData) {
             status: sup.status || 'Ready'
         };
     });
+    newData.optics = newData.optics.map(opt => ({
+        ...opt,
+        id: opt.id || generateId(),
+        sku: opt.sku || '',
+        serial: opt.serial || '',
+        batteryType: opt.batteryType || '',
+        lastChecked: opt.lastChecked || '',
+        lastChanged: opt.lastChanged || '',
+        status: opt.status || 'Ready'
+    }));
     if (oldData.ammo) {
         Object.entries(oldData.ammo).forEach(([cal, val]) => {
             const cleanCal = getCaliberFullName(cal);
@@ -122,16 +134,21 @@ async function save() {
     }
 }
 
-// Navigation & Modals
+// UI Controllers
 function switchTab(tabId) {
     document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
     document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
     const btn = Array.from(document.querySelectorAll('.tab-btn')).find(b => b.getAttribute('onclick')?.includes(`'${tabId}'`));
     if (btn) btn.classList.add('active');
     document.getElementById(tabId).classList.add('active');
-    if (tabId === 'dashboard') updateCharts();
+    if (tabId === 'dashboard' || tabId === 'ammodashboard') updateCharts();
     if (tabId === 'datatable') renderDataTable();
     if (tabId === 'settings') renderSettings();
+}
+
+function toggleGroup(type) {
+    collapsedGroups[type] = !collapsedGroups[type];
+    render();
 }
 
 function openModal(id) { 
@@ -143,6 +160,8 @@ function closeModal(id) {
     const el = document.getElementById(id);
     if (el) el.style.display = 'none';
     if (id === 'gun-modal') { document.getElementById('edit-gun-id').value = ''; document.getElementById('gun-modal-title').innerText = 'Add New Firearm'; }
+    if (id === 'suppressor-modal') { document.getElementById('edit-suppressor-id').value = ''; document.getElementById('suppressor-modal-title').innerText = 'Add New Suppressor'; }
+    if (id === 'optic-modal') { document.getElementById('edit-optic-id').value = ''; document.getElementById('optic-modal-title').innerText = 'Add New Optic'; }
 }
 
 function populateDropdown(id, items, selectedValue = '') {
@@ -173,26 +192,27 @@ function switchDetailsTab(tab) {
     if (tab === 'history') {
         const hist = data.history.filter(h => h.gunId === gunId).sort((a,b) => new Date(a.date) - new Date(b.date));
         let cumulative = gun.initialRounds || 0;
-        document.getElementById('details-history-list').innerHTML = hist.map(h => {
+        const rows = hist.map(h => {
             cumulative += h.rounds;
             return `<tr style="cursor:pointer" onclick="openEditSessionModal('${h.id}')">
                 <td>${h.date}</td><td>${h.caliber}</td><td>${h.rounds}</td><td>${cumulative}</td>
             </tr>`;
-        }).reverse().join('');
+        });
+        document.getElementById('details-history-list').innerHTML = rows.reverse().join('');
     } else {
-        const maint = data.maintenance.filter(m => m.gunId === gunId).sort((a,b) => new Date(a.date) - new Date(b.date));
-        document.getElementById('details-maint-list').innerHTML = maint.map(m => {
+        const maint = data.maintenance.filter(m => m.gunId === gunId).sort((a,b) => new Date(b.date) - new Date(a.date));
+        const rows = maint.map(m => {
             const cumulativeAtMaint = data.history
                 .filter(h => h.gunId === gunId && new Date(h.date) <= new Date(m.date))
                 .reduce((sum, h) => sum + h.rounds, 0) + (gun.initialRounds || 0);
             return `<tr style="cursor:pointer" onclick="openEditMaintenanceModal('${m.id}')">
                 <td>${m.date}</td><td>${m.type}</td><td>${m.roundsAtService}</td><td>${cumulativeAtMaint}</td><td>${m.notes || ''}</td>
             </tr>`;
-        }).reverse().join('');
+        });
+        document.getElementById('details-maint-list').innerHTML = rows.reverse().join('');
     }
 }
 
-// History Edits
 function openEditSessionModal(id) {
     const session = data.history.find(h => h.id === id);
     if (!session) return;
@@ -347,7 +367,118 @@ function saveMaintenance() {
     closeModal('maintenance-modal'); save();
 }
 
-// CRUD Logic
+// Optic Logic
+function toggleOpticAdvanced() {
+    const section = document.getElementById('optic-advanced-section');
+    const icon = document.getElementById('optic-advanced-icon');
+    const isHidden = section.style.display === 'none';
+    section.style.display = isHidden ? 'block' : 'none';
+    icon.innerText = isHidden ? '▲' : '▼';
+}
+
+function toggleOpticBattery() {
+    const hasBattery = document.getElementById('modal-optic-has-battery').checked;
+    document.getElementById('optic-battery-section').style.display = hasBattery ? 'block' : 'none';
+}
+
+function openAddOpticModal() {
+    populateDropdown('modal-optic-make', data.manufacturers);
+    document.getElementById('optic-modal-title').innerText = 'Add New Optic';
+    document.getElementById('edit-optic-id').value = '';
+    document.getElementById('modal-optic-model').value = '';
+    document.getElementById('modal-optic-sku').value = '';
+    document.getElementById('modal-optic-serial').value = '';
+    document.getElementById('modal-optic-has-battery').checked = false;
+    document.getElementById('modal-optic-battery').value = '';
+    document.getElementById('modal-optic-last-checked').valueAsDate = new Date();
+    document.getElementById('modal-optic-last-changed').valueAsDate = new Date();
+    document.getElementById('modal-optic-status').value = 'Ready';
+    
+    // Reset sections
+    document.getElementById('optic-advanced-section').style.display = 'none';
+    document.getElementById('optic-advanced-icon').innerText = '▼';
+    toggleOpticBattery();
+    
+    openModal('optic-modal');
+}
+
+function saveOptic() {
+    const manufacturer = document.getElementById('modal-optic-make').value;
+    const model = document.getElementById('modal-optic-model').value;
+    const sku = document.getElementById('modal-optic-sku').value;
+    const serial = document.getElementById('modal-optic-serial').value;
+    const hasBattery = document.getElementById('modal-optic-has-battery').checked;
+    const batteryType = hasBattery ? document.getElementById('modal-optic-battery').value : '';
+    const lastChecked = hasBattery ? document.getElementById('modal-optic-last-checked').value : '';
+    const lastChanged = hasBattery ? document.getElementById('modal-optic-last-changed').value : '';
+    const status = document.getElementById('modal-optic-status').value;
+    const editId = document.getElementById('edit-optic-id').value;
+
+    if (!manufacturer || !model) return alert('Manufacturer and Model required');
+
+    const opticData = { manufacturer, model, sku, serial, batteryType, lastChecked, lastChanged, status };
+
+    if (editId) {
+        const opt = data.optics.find(o => o.id === editId);
+        Object.assign(opt, opticData);
+    } else {
+        data.optics.push({ id: generateId(), ...opticData });
+    }
+    closeModal('optic-modal');
+    save();
+}
+
+function editOptic(id) {
+    const opt = data.optics.find(o => o.id === id);
+    if (!opt) return;
+    populateDropdown('modal-optic-make', data.manufacturers, opt.manufacturer);
+    document.getElementById('optic-modal-title').innerText = 'Edit Optic';
+    document.getElementById('edit-optic-id').value = opt.id;
+    document.getElementById('modal-optic-model').value = opt.model;
+    document.getElementById('modal-optic-sku').value = opt.sku || '';
+    document.getElementById('modal-optic-serial').value = opt.serial || '';
+    
+    const hasBattery = !!opt.batteryType;
+    document.getElementById('modal-optic-has-battery').checked = hasBattery;
+    document.getElementById('modal-optic-battery').value = opt.batteryType || '';
+    document.getElementById('modal-optic-last-checked').value = opt.lastChecked || '';
+    document.getElementById('modal-optic-last-changed').value = opt.lastChanged || '';
+    document.getElementById('modal-optic-status').value = opt.status;
+    
+    // Set section visibility
+    document.getElementById('optic-advanced-section').style.display = (opt.sku || opt.serial) ? 'block' : 'none';
+    document.getElementById('optic-advanced-icon').innerText = (opt.sku || opt.serial) ? '▲' : '▼';
+    toggleOpticBattery();
+
+    openModal('optic-modal');
+}
+
+function deleteOptic(id) {
+    if (confirm('Are you sure you want to delete this optic?')) {
+        data.optics = data.optics.filter(o => o.id !== id);
+        save();
+    }
+}
+
+function checkBattery(id) {
+    const opt = data.optics.find(o => o.id === id);
+    if (opt) {
+        opt.lastChecked = new Date().toISOString().split('T')[0];
+        save();
+    }
+}
+
+function changeBattery(id) {
+    const opt = data.optics.find(o => o.id === id);
+    if (opt) {
+        const today = new Date().toISOString().split('T')[0];
+        opt.lastChecked = today;
+        opt.lastChanged = today;
+        save();
+    }
+}
+
+// CRUD Logic (Other)
 function addCaliberItem() {
     const unit = document.getElementById('new-caliber-unit').value, name = document.getElementById('new-caliber-name').value.trim();
     if (!unit || !name) return alert('Select unit and enter name');
@@ -478,36 +609,48 @@ function renderDataTable() {
 }
 
 function render() {
-    const gunQuery = (document.getElementById('gun-search')?.value || '').toLowerCase(), supQuery = (document.getElementById('suppressor-search')?.value || '').toLowerCase(), ammoQuery = (document.getElementById('ammo-search')?.value || '').toLowerCase();
+    const gunQuery = (document.getElementById('gun-search')?.value || '').toLowerCase(), supQuery = (document.getElementById('suppressor-search')?.value || '').toLowerCase(), ammoQuery = (document.getElementById('ammo-search')?.value || '').toLowerCase(), optQuery = (document.getElementById('optic-search')?.value || '').toLowerCase();
     if (document.getElementById('settings').classList.contains('active')) renderSettings();
     if (document.getElementById('datatable').classList.contains('active')) renderDataTable();
-    document.getElementById('gun-list').innerHTML = data.guns.filter(g => `${g.manufacturer} ${g.model}`.toLowerCase().includes(gunQuery)).map(gun => {
-        const totalRounds = (gun.initialRounds || 0) + gun.rounds, roundsSinceClean = totalRounds - (gun.lastService || 0), needsClean = roundsSinceClean >= gun.cleanInterval;
-        let maintInfo = `Total: ${totalRounds} | Barrel: ${roundsSinceClean} / ${gun.cleanInterval}<br>`;
-        if (gun.type === 'Rifle') {
-            const roundsSinceBolt = totalRounds - (gun.lastBoltService || 0);
-            maintInfo += `Bolt: ${roundsSinceBolt} / ${gun.boltCleanInterval || 1000}<br>`;
-            if (roundsSinceBolt >= gun.boltCleanInterval) maintInfo += '<span class="warning-text">⚠ BOLT NEEDS CLEANING</span><br>';
-        }
-        return `<div class="item-card ${needsClean ? 'warning' : ''}" style="cursor:pointer" onclick="openGunDetails('${gun.id}')">
-                    <strong>${gun.manufacturer} ${gun.model} (${gun.type})</strong>
-                    <div class="stats">Caliber: ${gun.caliber} | SN: ${gun.serial || 'N/A'}<br>${maintInfo}Status: <span style="color: var(--accent)">${gun.status}</span></div>
-                    ${needsClean ? '<div class="warning-text">⚠ BARREL NEEDS CLEANING</div>' : ''}
-                    <div style="margin-top:10px; display:flex; flex-wrap:wrap; gap:5px;">
-                        <button onclick="event.stopPropagation(); openSessionModal('${gun.id}')">Log Session</button>
-                        <button class="secondary" onclick="event.stopPropagation(); openMaintenanceModal('${gun.id}')">Log Cleaning</button>
-                        <button class="secondary" onclick="event.stopPropagation(); showTrend('${gun.id}')">📈</button><button class="secondary" onclick="event.stopPropagation(); editGun('${gun.id}')">✎</button>
-                    </div>
-                </div>`;
+    
+    // Grouped rendering for guns
+    const types = ['Rifle', 'Pistol', 'Shotgun'];
+    document.getElementById('gun-list').innerHTML = types.map(type => {
+        const gunsOfType = data.guns.filter(g => g.type === type && `${g.manufacturer} ${g.model}`.toLowerCase().includes(gunQuery)).sort((a,b) => `${a.manufacturer} ${a.model}`.localeCompare(`${b.manufacturer} ${b.model}`));
+        if (gunsOfType.length === 0 && gunQuery === '') return '';
+        const isCollapsed = collapsedGroups[type];
+        return `<div class="inventory-group"><div class="group-header" onclick="toggleGroup('${type}')"><strong>${type}s (${gunsOfType.length})</strong><span>${isCollapsed ? '▶' : '▼'}</span></div><div class="group-content ${isCollapsed ? 'collapsed' : ''}">${gunsOfType.map(gun => {
+            const totalRounds = (gun.initialRounds || 0) + gun.rounds, roundsSinceClean = totalRounds - (gun.lastService || 0), needsClean = roundsSinceClean >= gun.cleanInterval;
+            let maintInfo = `Total: ${totalRounds} | Barrel: ${roundsSinceClean} / ${gun.cleanInterval}<br>`;
+            if (gun.type === 'Rifle') { const roundsSinceBolt = totalRounds - (gun.lastBoltService || 0); maintInfo += `Bolt: ${roundsSinceBolt} / ${gun.boltCleanInterval || 1000}<br>`; if (roundsSinceBolt >= gun.boltCleanInterval) maintInfo += '<span class="warning-text">⚠ BOLT NEEDS CLEANING</span><br>'; }
+            return `<div class="item-card ${needsClean ? 'warning' : ''}" style="cursor:pointer" onclick="openGunDetails('${gun.id}')"><strong>${gun.manufacturer} ${gun.model}</strong><div class="stats">Caliber: ${gun.caliber} | SN: ${gun.serial || 'N/A'}<br>${maintInfo}Status: <span style="color: var(--accent)">${gun.status}</span></div>${needsClean ? '<div class="warning-text">⚠ BARREL NEEDS CLEANING</div>' : ''}<div style="margin-top:10px; display:flex; flex-wrap:wrap; gap:5px;"><button onclick="event.stopPropagation(); openSessionModal('${gun.id}')">Log Session</button><button class="secondary" onclick="event.stopPropagation(); openMaintenanceModal('${gun.id}')">Log Cleaning</button><button class="secondary" onclick="event.stopPropagation(); showTrend('${gun.id}')">📈</button><button class="secondary" onclick="event.stopPropagation(); editGun('${gun.id}')">✎</button></div></div>`;
+        }).join('')}</div></div>`;
     }).join('');
+
     document.getElementById('suppressor-list').innerHTML = data.suppressors.filter(s => `${s.manufacturer} ${s.model}`.toLowerCase().includes(supQuery)).map(sup => {
         const needsClean = (sup.rounds - sup.lastService) >= sup.cleanInterval;
         return `<div class="item-card ${needsClean ? 'warning' : ''}"><strong>${sup.manufacturer} ${sup.model}</strong><div class="stats">Calibers: ${(sup.calibers || []).join(', ')}<br>SN: ${sup.serial || 'N/A'}<br>Total: ${sup.rounds} | Since Clean: ${sup.rounds - sup.lastService} / ${sup.cleanInterval}<br>Status: <span style="color: var(--accent)">${sup.status}</span></div>${needsClean ? '<div class="warning-text">⚠ NEEDS CLEANING</div>' : ''}<div style="margin-top:10px; display:flex; gap:5px;"><button class="secondary" onclick="data.suppressors.find(s => s.id === '${sup.id}').lastService=${sup.rounds}; save();">Cleaned</button><button class="secondary" onclick="editSuppressor('${sup.id}')">✎</button><button class="secondary" onclick="deleteSuppressor('${sup.id}')">🗑</button></div></div>`;
     }).join('');
+
+    // Render Optics
+    document.getElementById('optic-list').innerHTML = data.optics.filter(o => `${o.manufacturer} ${o.model}`.toLowerCase().includes(optQuery)).map(opt => {
+        let batteryInfo = '';
+        let needsCheck = false;
+        if (opt.batteryType) {
+            const lastChecked = new Date(opt.lastChecked || 0);
+            const sixMonthsAgo = new Date();
+            sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+            needsCheck = lastChecked < sixMonthsAgo;
+            batteryInfo = `<br>Battery: ${opt.batteryType}<br>Last Checked: ${opt.lastChecked || 'Never'}<br>Last Changed: ${opt.lastChanged || 'Never'}`;
+        }
+        return `<div class="item-card ${needsCheck ? 'warning' : ''}"><strong>${opt.manufacturer} ${opt.model}</strong><div class="stats">SKU: ${opt.sku || 'N/A'} | SN: ${opt.serial || 'N/A'}${batteryInfo}<br>Status: <span style="color: var(--accent)">${opt.status}</span></div>${needsCheck ? '<div class="warning-text">⚠ CHECK BATTERY</div>' : ''}<div style="margin-top:10px; display:flex; flex-wrap:wrap; gap:5px;">${opt.batteryType ? `<button class="secondary" onclick="checkBattery('${opt.id}')">Check Battery</button><button class="secondary" onclick="changeBattery('${opt.id}')">Change Battery</button>` : ''}<button class="secondary" onclick="editOptic('${opt.id}')">✎</button><button class="secondary" onclick="deleteOptic('${opt.id}')">🗑</button></div></div>`;
+    }).join('');
+
     document.getElementById('ammo-list').innerHTML = Object.entries(data.ammo).filter(([cal]) => cal.toLowerCase().includes(ammoQuery)).map(([cal, info]) => {
         const low = info.qty <= info.minStock;
         return `<div class="item-card ${low ? 'warning' : ''}" style="cursor:pointer" onclick="editAmmo('${cal}')"><strong>${cal}</strong><div class="stats">In Stock: <span style="font-weight:bold; font-size:1.2em">${info.qty}</span><br>Min Alert: ${info.minStock}</div>${low ? '<div class="warning-text">⚠ LOW STOCK</div>' : ''}</div>`;
     }).join('');
+
     const historyBody = document.getElementById('history-list'); if (historyBody) historyBody.innerHTML = data.history.slice(0, 50).map(entry => `<tr style="cursor:pointer" onclick="openEditSessionModal('${entry.id}')"><td>${entry.date}</td><td>${entry.gun}</td><td>${entry.caliber}</td><td>${entry.rounds}</td></tr>`).join('');
     updateGlobalStats();
 }
@@ -521,10 +664,12 @@ function updateCharts() {
     const ctxRounds = document.getElementById('roundsChart')?.getContext('2d'), ctxAmmo = document.getElementById('ammoChart')?.getContext('2d'), ctxUsage = document.getElementById('usageChart')?.getContext('2d');
     if (!ctxRounds || !ctxAmmo || !ctxUsage) return;
     if (charts.rounds) charts.rounds.destroy(); if (charts.ammo) charts.ammo.destroy(); if (charts.usage) charts.usage.destroy();
-    charts.rounds = new Chart(ctxRounds, { type: 'bar', data: { labels: data.guns.map(g => `${g.manufacturer} ${g.model}`), datasets: [{ label: 'Total Rounds', data: data.guns.map(g => (g.initialRounds || 0) + g.rounds), backgroundColor: '#cfb53b' }] }, options: { plugins: { legend: { display: false } } } });
-    charts.ammo = new Chart(ctxAmmo, { type: 'doughnut', data: { labels: Object.keys(data.ammo), datasets: [{ data: Object.values(data.ammo).map(a => a.qty), backgroundColor: ['#cfb53b', '#555', '#888', '#aaa', '#03dac6'] }] } });
+    const selectedType = document.getElementById('chart-type-filter').value;
+    const filteredGuns = data.guns.filter(g => selectedType === 'All' || g.type === selectedType);
+    charts.rounds = new Chart(ctxRounds, { type: 'bar', data: { labels: filteredGuns.map(g => `${g.manufacturer} ${g.model}`), datasets: [{ label: 'Total Rounds', data: filteredGuns.map(g => (g.initialRounds || 0) + g.rounds), backgroundColor: '#cfb53b' }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, zoom: { zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' }, pan: { enabled: true, mode: 'x' } } } } });
+    charts.ammo = new Chart(ctxAmmo, { type: 'doughnut', data: { labels: Object.keys(data.ammo), datasets: [{ data: Object.values(data.ammo).map(a => a.qty), backgroundColor: ['#cfb53b', '#555', '#888', '#aaa', '#03dac6'] }] }, options: { responsive: true, maintainAspectRatio: false } });
     const usageData = {}; data.history.forEach(session => { usageData[session.caliber] = (usageData[session.caliber] || 0) + session.rounds; });
-    charts.usage = new Chart(ctxUsage, { type: 'bar', data: { labels: Object.keys(usageData), datasets: [{ label: 'Rounds Fired', data: Object.values(usageData), backgroundColor: '#cf6679' }] }, options: { indexAxis: 'y', plugins: { legend: { display: false } } } });
+    charts.usage = new Chart(ctxUsage, { type: 'bar', data: { labels: Object.keys(usageData), datasets: [{ label: 'Rounds Fired', data: Object.values(usageData), backgroundColor: '#cf6679' }] }, options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', plugins: { legend: { display: false }, zoom: { zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'y' }, pan: { enabled: true, mode: 'y' } } } } });
 }
 
 function showTrend(gunId) {
@@ -535,6 +680,6 @@ function showTrend(gunId) {
     let cumulative = gun.initialRounds || 0; const labels = ['Start'], points = [cumulative];
     gunHistory.forEach(h => { cumulative += h.rounds; labels.push(h.date); points.push(cumulative); });
     if (charts.trend) charts.trend.destroy();
-    charts.trend = new Chart(document.getElementById('trendChart').getContext('2d'), { type: 'line', data: { labels: labels, datasets: [{ label: 'Cumulative Rounds', data: points, borderColor: '#cfb53b', backgroundColor: 'rgba(207, 181, 59, 0.1)', fill: true, tension: 0.1, pointRadius: 4, pointBackgroundColor: (context) => maintHistory.some(m => m.date === context.chart.data.labels[context.dataIndex]) ? '#cf6679' : '#cfb53b', pointBorderColor: (context) => maintHistory.some(m => m.date === context.chart.data.labels[context.dataIndex]) ? '#fff' : '#cfb53b' }] }, options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true } }, plugins: { legend: { display: false }, tooltip: { callbacks: { afterLabel: (context) => { const maints = maintHistory.filter(m => m.date === context.label); return maints.length > 0 ? maints.map(m => `Maintenance: ${m.type}`).join('\n') : ''; } } } } } });
+    charts.trend = new Chart(document.getElementById('trendChart').getContext('2d'), { type: 'line', data: { labels: labels, datasets: [{ label: 'Cumulative Rounds', data: points, borderColor: '#cfb53b', backgroundColor: 'rgba(207, 181, 59, 0.1)', fill: true, tension: 0.1, pointRadius: 4, pointBackgroundColor: (context) => maintHistory.some(m => m.date === context.chart.data.labels[context.dataIndex]) ? '#cf6679' : '#cfb53b', pointBorderColor: (context) => maintHistory.some(m => m.date === context.chart.data.labels[context.dataIndex]) ? '#fff' : '#cfb53b' }] }, options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true } }, plugins: { legend: { display: false }, tooltip: { callbacks: { afterLabel: (context) => { const maints = maintHistory.filter(m => m.date === context.label); return maints.length > 0 ? maints.map(m => `Maintenance: ${m.type}`).join('\n') : ''; } } }, zoom: { zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'xy' }, pan: { enabled: true, mode: 'xy' } } } } });
 }
 load();
