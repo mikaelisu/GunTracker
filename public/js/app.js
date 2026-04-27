@@ -1,5 +1,5 @@
 const API_URL = '/api/data';
-let data = { guns: [], suppressors: [], optics: [], ammo: {}, history: [], manufacturers: [], calibers: [], units: [], maintenance: [] };
+let data = { guns: [], suppressors: [], optics: [], ammo: {}, history: [], gunManufacturers: [], suppressorManufacturers: [], opticManufacturers: [], calibers: [], units: [], maintenance: [] };
 let charts = {};
 let tableSort = { column: 'manufacturer', direction: 'asc' };
 let collapsedGroups = {};
@@ -53,55 +53,64 @@ function migrateData(oldData) {
         ammo: {},
         history: oldData.history || [],
         maintenance: oldData.maintenance || [],
-        manufacturers: oldData.manufacturers || [],
+        gunManufacturers: oldData.gunManufacturers || [],
+        suppressorManufacturers: oldData.suppressorManufacturers || [],
+        opticManufacturers: oldData.opticManufacturers || [],
         calibers: [],
         units: oldData.units || ['mm', 'Caliber', 'ga']
     };
+
     data.units = newData.units;
+
+    // Aggressive ID migration
     newData.history = newData.history.map(h => ({ ...h, id: h.id || generateId() }));
     newData.maintenance = newData.maintenance.map(m => ({ ...m, id: m.id || generateId() }));
-    newData.guns = newData.guns.map(gun => {
-        const rounds = gun.rounds || 0;
-        return {
-            ...gun,
-            id: gun.id || generateId(),
-            caliber: getCaliberFullName(gun.caliber),
-            sku: gun.sku || '',
-            type: gun.type || 'Rifle',
-            rounds: rounds,
-            initialRounds: gun.initialRounds || 0,
-            lastService: Math.min(gun.lastService || 0, (gun.initialRounds || 0) + rounds),
-            lastBoltService: Math.min(gun.lastBoltService || gun.lastService || 0, (gun.initialRounds || 0) + rounds),
-            serial: gun.serial || '',
-            cleanInterval: gun.cleanInterval || 500,
-            boltCleanInterval: gun.boltCleanInterval || 1000,
-            status: gun.status || 'Ready'
-        };
-    });
-    newData.suppressors = newData.suppressors.map(sup => {
-        const rounds = sup.rounds || 0;
-        return {
-            ...sup,
-            id: sup.id || generateId(),
-            sku: sup.sku || '',
-            calibers: (sup.calibers || []).map(getCaliberFullName).filter(c => c !== 'Unknown'),
-            rounds: rounds,
-            lastService: Math.min(sup.lastService || 0, rounds),
-            serial: sup.serial || '',
-            cleanInterval: sup.cleanInterval || 1000,
-            status: sup.status || 'Ready'
-        };
-    });
+
+    newData.guns = newData.guns.map(gun => ({
+        ...gun,
+        id: gun.id || generateId(),
+        caliber: getCaliberFullName(gun.caliber),
+        sku: gun.sku || '',
+        type: gun.type || 'Rifle',
+        rounds: gun.rounds || 0,
+        initialRounds: gun.initialRounds || 0,
+        purchaseDate: gun.purchaseDate || '',
+        purchaseCost: gun.purchaseCost || 0,
+        lastService: Math.min(gun.lastService || 0, (gun.initialRounds || 0) + (gun.rounds || 0)),
+        lastBoltService: Math.min(gun.lastBoltService || gun.lastService || 0, (gun.initialRounds || 0) + (gun.rounds || 0)),
+        serial: gun.serial || '',
+        cleanInterval: gun.cleanInterval || 500,
+        boltCleanInterval: gun.boltCleanInterval || 1000,
+        status: gun.status || 'Ready'
+    }));
+
+    newData.suppressors = newData.suppressors.map(sup => ({
+        ...sup,
+        id: sup.id || generateId(),
+        sku: sup.sku || '',
+        calibers: (sup.calibers || []).map(getCaliberFullName).filter(c => c !== 'Unknown'),
+        rounds: sup.rounds || 0,
+        purchaseDate: sup.purchaseDate || '',
+        purchaseCost: sup.purchaseCost || 0,
+        lastService: Math.min(sup.lastService || 0, sup.rounds || 0),
+        serial: sup.serial || '',
+        cleanInterval: sup.cleanInterval || 1000,
+        status: sup.status || 'Ready'
+    }));
+
     newData.optics = newData.optics.map(opt => ({
         ...opt,
         id: opt.id || generateId(),
         sku: opt.sku || '',
         serial: opt.serial || '',
+        purchaseDate: opt.purchaseDate || '',
+        purchaseCost: opt.purchaseCost || 0,
         batteryType: opt.batteryType || '',
         lastChecked: opt.lastChecked || '',
         lastChanged: opt.lastChanged || '',
         status: opt.status || 'Ready'
     }));
+
     if (oldData.ammo) {
         Object.entries(oldData.ammo).forEach(([cal, val]) => {
             const cleanCal = getCaliberFullName(cal);
@@ -109,13 +118,40 @@ function migrateData(oldData) {
             newData.ammo[cleanCal] = typeof val === 'number' ? { qty: val, minStock: 100 } : val;
         });
     }
+
+    // Auto-populate manufacturers from existing data
+    const gunManSet = new Set(newData.gunManufacturers);
+    const supManSet = new Set(newData.suppressorManufacturers);
+    const optManSet = new Set(newData.opticManufacturers);
+    
+    // Add old global manufacturers to all as fallback
+    if (oldData.manufacturers) {
+        oldData.manufacturers.forEach(m => {
+            if (m && m !== 'undefined' && m !== 'null') {
+                gunManSet.add(m);
+                supManSet.add(m);
+                optManSet.add(m);
+            }
+        });
+    }
+
+    newData.guns.forEach(g => { if (g.manufacturer && g.manufacturer !== 'undefined') gunManSet.add(g.manufacturer); });
+    newData.suppressors.forEach(s => { if (s.manufacturer && s.manufacturer !== 'undefined') supManSet.add(s.manufacturer); });
+    newData.optics.forEach(o => { if (o.manufacturer && o.manufacturer !== 'undefined') optManSet.add(o.manufacturer); });
+
+    newData.gunManufacturers = Array.from(gunManSet).sort();
+    newData.suppressorManufacturers = Array.from(supManSet).sort();
+    newData.opticManufacturers = Array.from(optManSet).sort();
+
     const caliberSet = new Set();
-    newData.guns.forEach(g => caliberSet.add(JSON.stringify(parseCaliber(g.caliber))));
-    newData.suppressors.forEach(s => (s.calibers || []).forEach(c => caliberSet.add(JSON.stringify(parseCaliber(c)))));
-    Object.keys(newData.ammo).forEach(c => caliberSet.add(JSON.stringify(parseCaliber(c))));
-    (oldData.calibers || []).forEach(c => caliberSet.add(JSON.stringify(parseCaliber(c))));
-    newData.calibers = Array.from(caliberSet).map(s => JSON.parse(s)).filter(c => c.name !== 'Unknown').sort((a,b) => a.name.localeCompare(b.name));
-    newData.manufacturers = Array.from(new Set(newData.manufacturers)).filter(m => m && m !== 'undefined' && m !== 'null').sort();
+    const tempCalibers = (oldData.calibers || []).map(parseCaliber);
+    newData.guns.forEach(g => { const p = parseCaliber(g.caliber); if (p.name !== 'Unknown') caliberSet.add(JSON.stringify(p)); });
+    newData.suppressors.forEach(s => (s.calibers || []).forEach(c => { const p = parseCaliber(c); if (p.name !== 'Unknown') caliberSet.add(JSON.stringify(p)); }));
+    Object.keys(newData.ammo).forEach(c => { const p = parseCaliber(c); if (p.name !== 'Unknown') caliberSet.add(JSON.stringify(p)); });
+    tempCalibers.forEach(c => { if (c.name !== 'Unknown') caliberSet.add(JSON.stringify(c)); });
+
+    newData.calibers = Array.from(caliberSet).map(s => JSON.parse(s)).sort((a,b) => a.name.localeCompare(b.name));
+
     return newData;
 }
 
@@ -168,6 +204,20 @@ function populateDropdown(id, items, selectedValue = '') {
     const select = document.getElementById(id);
     if (!select) return;
     select.innerHTML = '<option value="">-- Select --</option>' + items.map(item => `<option value="${item}" ${String(item) === String(selectedValue) ? 'selected' : ''}>${item}</option>`).join('');
+}
+
+function promptNewManufacturer(listName, selectId) {
+    const name = prompt(`Enter new manufacturer name:`);
+    if (!name) return;
+    const trimmed = name.trim();
+    if (!trimmed || trimmed === 'undefined') return;
+    if (data[listName].includes(trimmed)) return alert('Already exists');
+    
+    data[listName].push(trimmed);
+    data[listName].sort();
+    
+    populateDropdown(selectId, data[listName], trimmed);
+    save();
 }
 
 // Gun Details
@@ -368,6 +418,22 @@ function saveMaintenance() {
 }
 
 // Optic Logic
+function toggleGunAdvanced() {
+    const section = document.getElementById('gun-advanced-section');
+    const icon = document.getElementById('gun-advanced-icon');
+    const isHidden = section.style.display === 'none';
+    section.style.display = isHidden ? 'block' : 'none';
+    icon.innerText = isHidden ? '▲' : '▼';
+}
+
+function toggleSuppressorAdvanced() {
+    const section = document.getElementById('suppressor-advanced-section');
+    const icon = document.getElementById('suppressor-advanced-icon');
+    const isHidden = section.style.display === 'none';
+    section.style.display = isHidden ? 'block' : 'none';
+    icon.innerText = isHidden ? '▲' : '▼';
+}
+
 function toggleOpticAdvanced() {
     const section = document.getElementById('optic-advanced-section');
     const icon = document.getElementById('optic-advanced-icon');
@@ -382,101 +448,58 @@ function toggleOpticBattery() {
 }
 
 function openAddOpticModal() {
-    populateDropdown('modal-optic-make', data.manufacturers);
+    populateDropdown('modal-optic-make', data.opticManufacturers);
     document.getElementById('optic-modal-title').innerText = 'Add New Optic';
     document.getElementById('edit-optic-id').value = '';
     document.getElementById('modal-optic-model').value = '';
     document.getElementById('modal-optic-sku').value = '';
     document.getElementById('modal-optic-serial').value = '';
+    document.getElementById('modal-optic-purchased').value = '';
+    document.getElementById('modal-optic-cost').value = '0';
     document.getElementById('modal-optic-has-battery').checked = false;
     document.getElementById('modal-optic-battery').value = '';
     document.getElementById('modal-optic-last-checked').valueAsDate = new Date();
     document.getElementById('modal-optic-last-changed').valueAsDate = new Date();
     document.getElementById('modal-optic-status').value = 'Ready';
-    
-    // Reset sections
     document.getElementById('optic-advanced-section').style.display = 'none';
     document.getElementById('optic-advanced-icon').innerText = '▼';
     toggleOpticBattery();
-    
     openModal('optic-modal');
 }
 
 function saveOptic() {
-    const manufacturer = document.getElementById('modal-optic-make').value;
-    const model = document.getElementById('modal-optic-model').value;
-    const sku = document.getElementById('modal-optic-sku').value;
-    const serial = document.getElementById('modal-optic-serial').value;
-    const hasBattery = document.getElementById('modal-optic-has-battery').checked;
-    const batteryType = hasBattery ? document.getElementById('modal-optic-battery').value : '';
-    const lastChecked = hasBattery ? document.getElementById('modal-optic-last-checked').value : '';
-    const lastChanged = hasBattery ? document.getElementById('modal-optic-last-changed').value : '';
-    const status = document.getElementById('modal-optic-status').value;
-    const editId = document.getElementById('edit-optic-id').value;
-
+    const manufacturer = document.getElementById('modal-optic-make').value, model = document.getElementById('modal-optic-model').value, sku = document.getElementById('modal-optic-sku').value, serial = document.getElementById('modal-optic-serial').value, purchased = document.getElementById('modal-optic-purchased').value, cost = parseFloat(document.getElementById('modal-optic-cost').value) || 0, hasBattery = document.getElementById('modal-optic-has-battery').checked, batteryType = hasBattery ? document.getElementById('modal-optic-battery').value : '', lastChecked = hasBattery ? document.getElementById('modal-optic-last-checked').value : '', lastChanged = hasBattery ? document.getElementById('modal-optic-last-changed').value : '', status = document.getElementById('modal-optic-status').value, editId = document.getElementById('edit-optic-id').value;
     if (!manufacturer || !model) return alert('Manufacturer and Model required');
-
-    const opticData = { manufacturer, model, sku, serial, batteryType, lastChecked, lastChanged, status };
-
-    if (editId) {
-        const opt = data.optics.find(o => o.id === editId);
-        Object.assign(opt, opticData);
-    } else {
-        data.optics.push({ id: generateId(), ...opticData });
-    }
-    closeModal('optic-modal');
-    save();
+    const opticData = { manufacturer, model, sku, serial, purchaseDate: purchased, purchaseCost: cost, batteryType, lastChecked, lastChanged, status };
+    if (editId) { const opt = data.optics.find(o => o.id === editId); Object.assign(opt, opticData); }
+    else { data.optics.push({ id: generateId(), ...opticData }); }
+    closeModal('optic-modal'); save();
 }
 
 function editOptic(id) {
-    const opt = data.optics.find(o => o.id === id);
-    if (!opt) return;
-    populateDropdown('modal-optic-make', data.manufacturers, opt.manufacturer);
+    const opt = data.optics.find(o => o.id === id); if (!opt) return;
+    populateDropdown('modal-optic-make', data.opticManufacturers, opt.manufacturer);
     document.getElementById('optic-modal-title').innerText = 'Edit Optic';
     document.getElementById('edit-optic-id').value = opt.id;
     document.getElementById('modal-optic-model').value = opt.model;
     document.getElementById('modal-optic-sku').value = opt.sku || '';
     document.getElementById('modal-optic-serial').value = opt.serial || '';
-    
+    document.getElementById('modal-optic-purchased').value = opt.purchaseDate || '';
+    document.getElementById('modal-optic-cost').value = opt.purchaseCost || 0;
     const hasBattery = !!opt.batteryType;
     document.getElementById('modal-optic-has-battery').checked = hasBattery;
     document.getElementById('modal-optic-battery').value = opt.batteryType || '';
     document.getElementById('modal-optic-last-checked').value = opt.lastChecked || '';
     document.getElementById('modal-optic-last-changed').value = opt.lastChanged || '';
     document.getElementById('modal-optic-status').value = opt.status;
-    
-    // Set section visibility
-    document.getElementById('optic-advanced-section').style.display = (opt.sku || opt.serial) ? 'block' : 'none';
-    document.getElementById('optic-advanced-icon').innerText = (opt.sku || opt.serial) ? '▲' : '▼';
-    toggleOpticBattery();
-
-    openModal('optic-modal');
+    document.getElementById('optic-advanced-section').style.display = (opt.sku || opt.serial || opt.purchaseDate || opt.purchaseCost) ? 'block' : 'none';
+    document.getElementById('optic-advanced-icon').innerText = (opt.sku || opt.serial || opt.purchaseDate || opt.purchaseCost) ? '▲' : '▼';
+    toggleOpticBattery(); openModal('optic-modal');
 }
 
-function deleteOptic(id) {
-    if (confirm('Are you sure you want to delete this optic?')) {
-        data.optics = data.optics.filter(o => o.id !== id);
-        save();
-    }
-}
-
-function checkBattery(id) {
-    const opt = data.optics.find(o => o.id === id);
-    if (opt) {
-        opt.lastChecked = new Date().toISOString().split('T')[0];
-        save();
-    }
-}
-
-function changeBattery(id) {
-    const opt = data.optics.find(o => o.id === id);
-    if (opt) {
-        const today = new Date().toISOString().split('T')[0];
-        opt.lastChecked = today;
-        opt.lastChanged = today;
-        save();
-    }
-}
+function deleteOptic(id) { if (confirm('Are you sure?')) { data.optics = data.optics.filter(o => o.id !== id); save(); } }
+function checkBattery(id) { const opt = data.optics.find(o => o.id === id); if (opt) { opt.lastChecked = new Date().toISOString().split('T')[0]; save(); } }
+function changeBattery(id) { const opt = data.optics.find(o => o.id === id); if (opt) { const today = new Date().toISOString().split('T')[0]; opt.lastChecked = today; opt.lastChanged = today; save(); } }
 
 // CRUD Logic (Other)
 function addCaliberItem() {
@@ -494,13 +517,66 @@ function addItem(type, inputId) {
     data[type].push(val); data[type].sort(); document.getElementById(inputId).value = ''; save();
 }
 
-function deleteItem(type, index) { if (confirm(`Remove this ${type.slice(0, -1)}?`)) { data[type].splice(index, 1); save(); } }
+function deleteItem(type, index) {
+    const itemValue = data[type][index];
+    
+    // Check if manufacturer is in use before deleting
+    if (['gunManufacturers', 'suppressorManufacturers', 'opticManufacturers'].includes(type)) {
+        let inUse = false;
+        if (type === 'gunManufacturers') inUse = data.guns.some(g => g.manufacturer === itemValue);
+        if (type === 'suppressorManufacturers') inUse = data.suppressors.some(s => s.manufacturer === itemValue);
+        if (type === 'opticManufacturers') inUse = data.optics.some(o => o.manufacturer === itemValue);
+        
+        if (inUse) {
+            if (!confirm(`Warning: "${itemValue}" is currently used by one or more items. Deleting it will leave those items with a missing manufacturer. Proceed?`)) {
+                return;
+            }
+        }
+    }
+
+    if (confirm(`Remove this ${type.slice(0, -1)}?`)) {
+        data[type].splice(index, 1);
+        save();
+    }
+}
 
 function renderSettings() {
-    document.getElementById('manufacturer-list-mgmt').innerHTML = data.manufacturers.map((m, i) => `<div style="display:flex; justify-content:space-between; padding:8px; border-bottom:1px solid #333; align-items:center;"><span>${m}</span><button class="secondary" style="padding:2px 8px;" onclick="deleteItem('manufacturers', ${i})">×</button></div>`).join('');
-    document.getElementById('unit-list-mgmt').innerHTML = data.units.map((u, i) => `<div style="background:#444; padding:5px 10px; border-radius:15px; display:flex; gap:8px; align-items:center;"><span>${u}</span><span style="cursor:pointer; font-weight:bold; color:var(--danger);" onclick="deleteItem('units', ${i})">×</span></div>`).join('');
+    // Render individual lists
+    const map = {
+        'man-list-gun': 'gunManufacturers',
+        'man-list-sup': 'suppressorManufacturers',
+        'man-list-opt': 'opticManufacturers'
+    };
+
+    Object.entries(map).forEach(([elId, dataKey]) => {
+        const el = document.getElementById(elId);
+        if (!el) return;
+        el.innerHTML = data[dataKey].map((m, i) => `
+            <div style="display:flex; justify-content:space-between; padding:5px 0; border-bottom:1px solid #333; align-items:center;">
+                <span>${m}</span>
+                <button class="secondary" style="padding:0 5px; background:transparent;" onclick="deleteItem('${dataKey}', ${i})">×</button>
+            </div>
+        `).join('');
+    });
+
+    const unitList = document.getElementById('unit-list-mgmt');
+    if (unitList) {
+        unitList.innerHTML = data.units.map((u, i) => `
+            <div style="background:#444; padding:5px 10px; border-radius:15px; display:flex; gap:8px; align-items:center; margin:2px;">
+                <span>${u}</span><span style="cursor:pointer; font-weight:bold; color:var(--danger);" onclick="deleteItem('units', ${i})">×</span>
+            </div>`).join('');
+    }
+
     populateDropdown('new-caliber-unit', data.units);
-    document.getElementById('caliber-list-mgmt').innerHTML = data.calibers.map((c, i) => `<div style="display:flex; justify-content:space-between; padding:8px; border-bottom:1px solid #333; align-items:center;"><span><strong>${c.unit}</strong>: ${c.name}</span><button class="secondary" style="padding:2px 8px;" onclick="deleteItem('calibers', ${i})">×</button></div>`).join('');
+
+    const calList = document.getElementById('caliber-list-mgmt');
+    if (calList) {
+        calList.innerHTML = data.calibers.map((c, i) => `
+            <div style="display:flex; justify-content:space-between; padding:8px; border-bottom:1px solid #333; align-items:center;">
+                <span><strong>${c.unit}</strong>: ${c.name}</span>
+                <button class="secondary" style="padding:2px 8px;" onclick="deleteItem('calibers', ${i})">×</button>
+            </div>`).join('');
+    }
 }
 
 function toggleBoltField() {
@@ -514,52 +590,85 @@ function populateCheckboxList(containerId, items, selectedItems = []) {
 }
 
 function openAddGunModal() {
-    populateDropdown('modal-gun-make', data.manufacturers); populateDropdown('modal-gun-caliber', data.calibers.map(getCaliberFullName));
+    populateDropdown('modal-gun-make', data.gunManufacturers); populateDropdown('modal-gun-caliber', data.calibers.map(getCaliberFullName));
     document.getElementById('gun-modal-title').innerText = 'Add New Firearm'; document.getElementById('edit-gun-id').value = '';
     document.getElementById('modal-gun-type').value = 'Rifle'; document.getElementById('modal-gun-model').value = '';
     document.getElementById('modal-gun-sku').value = ''; document.getElementById('modal-gun-serial').value = '';
     document.getElementById('modal-gun-initial-rounds').value = '0';
+    document.getElementById('modal-gun-purchased').value = '';
+    document.getElementById('modal-gun-cost').value = '0';
     document.getElementById('modal-gun-interval').value = '500'; document.getElementById('modal-gun-bolt-interval').value = '1000';
-    document.getElementById('modal-gun-status').value = 'Ready'; toggleBoltField(); openModal('gun-modal');
+    document.getElementById('modal-gun-status').value = 'Ready';
+    document.getElementById('gun-advanced-section').style.display = 'none';
+    document.getElementById('gun-advanced-icon').innerText = '▼';
+    toggleBoltField(); openModal('gun-modal');
 }
 
 function saveGun() {
-    const type = document.getElementById('modal-gun-type').value, manufacturer = document.getElementById('modal-gun-make').value, model = document.getElementById('modal-gun-model').value, caliber = document.getElementById('modal-gun-caliber').value, sku = document.getElementById('modal-gun-sku').value, serial = document.getElementById('modal-gun-serial').value, initialRounds = parseInt(document.getElementById('modal-gun-initial-rounds').value) || 0, interval = parseInt(document.getElementById('modal-gun-interval').value), boltInterval = parseInt(document.getElementById('modal-gun-bolt-interval').value), status = document.getElementById('modal-gun-status').value, editId = document.getElementById('edit-gun-id').value;
+    const type = document.getElementById('modal-gun-type').value, manufacturer = document.getElementById('modal-gun-make').value, model = document.getElementById('modal-gun-model').value, caliber = document.getElementById('modal-gun-caliber').value, sku = document.getElementById('modal-gun-sku').value, serial = document.getElementById('modal-gun-serial').value, initialRounds = parseInt(document.getElementById('modal-gun-initial-rounds').value) || 0, purchased = document.getElementById('modal-gun-purchased').value, cost = parseFloat(document.getElementById('modal-gun-cost').value) || 0, interval = parseInt(document.getElementById('modal-gun-interval').value), boltInterval = parseInt(document.getElementById('modal-gun-bolt-interval').value), status = document.getElementById('modal-gun-status').value, editId = document.getElementById('edit-gun-id').value;
     if (!manufacturer || !caliber) return alert('Manufacturer and Caliber required');
-    if (editId) { const gun = data.guns.find(g => g.id === editId); Object.assign(gun, { type, manufacturer, model, caliber, sku, serial, initialRounds, cleanInterval: interval, boltCleanInterval: boltInterval, status }); }
-    else { data.guns.push({ id: generateId(), type, manufacturer, model, caliber, sku, serial, initialRounds, rounds: 0, lastService: 0, lastBoltService: 0, cleanInterval: interval, boltCleanInterval: boltInterval, status }); }
+    const gunData = { type, manufacturer, model, caliber, sku, serial, initialRounds, purchaseDate: purchased, purchaseCost: cost, cleanInterval: interval, boltCleanInterval: boltInterval, status };
+    if (editId) { const gun = data.guns.find(g => g.id === editId); Object.assign(gun, gunData); }
+    else { data.guns.push({ id: generateId(), ...gunData, rounds: 0, lastService: 0, lastBoltService: 0 }); }
     closeModal('gun-modal'); save();
 }
 
 function editGun(id) {
     const gun = data.guns.find(g => g.id === id); if (!gun) return;
-    populateDropdown('modal-gun-make', data.manufacturers, gun.manufacturer); populateDropdown('modal-gun-caliber', data.calibers.map(getCaliberFullName), gun.caliber);
+    populateDropdown('modal-gun-make', data.gunManufacturers, gun.manufacturer); populateDropdown('modal-gun-caliber', data.calibers.map(getCaliberFullName), gun.caliber);
     document.getElementById('gun-modal-title').innerText = 'Edit Firearm'; document.getElementById('edit-gun-id').value = gun.id;
     document.getElementById('modal-gun-type').value = gun.type || 'Rifle'; document.getElementById('modal-gun-model').value = gun.model;
     document.getElementById('modal-gun-sku').value = gun.sku || ''; document.getElementById('modal-gun-serial').value = gun.serial;
     document.getElementById('modal-gun-initial-rounds').value = gun.initialRounds || 0;
+    document.getElementById('modal-gun-purchased').value = gun.purchaseDate || '';
+    document.getElementById('modal-gun-cost').value = gun.purchaseCost || 0;
     document.getElementById('modal-gun-interval').value = gun.cleanInterval; document.getElementById('modal-gun-bolt-interval').value = gun.boltCleanInterval || 1000;
-    document.getElementById('modal-gun-status').value = gun.status; toggleBoltField(); openModal('gun-modal');
+    document.getElementById('modal-gun-status').value = gun.status;
+    document.getElementById('gun-advanced-section').style.display = (gun.initialRounds || gun.purchaseDate || gun.purchaseCost) ? 'block' : 'none';
+    document.getElementById('gun-advanced-icon').innerText = (gun.initialRounds || gun.purchaseDate || gun.purchaseCost) ? '▲' : '▼';
+    toggleBoltField(); openModal('gun-modal');
 }
 
 function deleteGun(id) { if (confirm('Are you sure?')) { data.guns = data.guns.filter(g => g.id !== id); save(); } }
 
-function openAddSuppressorModal() { populateDropdown('modal-suppressor-make', data.manufacturers); populateCheckboxList('modal-suppressor-calibers-list', data.calibers.map(getCaliberFullName)); openModal('suppressor-modal'); }
+function openAddSuppressorModal() { 
+    populateDropdown('modal-suppressor-make', data.suppressorManufacturers); 
+    populateCheckboxList('modal-suppressor-calibers-list', data.calibers.map(getCaliberFullName)); 
+    document.getElementById('suppressor-modal-title').innerText = 'Add New Suppressor';
+    document.getElementById('edit-suppressor-id').value = '';
+    document.getElementById('modal-suppressor-model').value = '';
+    document.getElementById('modal-suppressor-sku').value = '';
+    document.getElementById('modal-suppressor-serial').value = '';
+    document.getElementById('modal-suppressor-purchased').value = '';
+    document.getElementById('modal-suppressor-cost').value = '0';
+    document.getElementById('modal-suppressor-interval').value = '1000';
+    document.getElementById('modal-suppressor-status').value = 'Ready';
+    document.getElementById('suppressor-advanced-section').style.display = 'none';
+    document.getElementById('suppressor-advanced-icon').innerText = '▼';
+    openModal('suppressor-modal'); 
+}
 
 function saveSuppressor() {
-    const manufacturer = document.getElementById('modal-suppressor-make').value, model = document.getElementById('modal-suppressor-model').value, sku = document.getElementById('modal-suppressor-sku').value, serial = document.getElementById('modal-suppressor-serial').value, interval = parseInt(document.getElementById('modal-suppressor-interval').value), status = document.getElementById('modal-suppressor-status').value, editId = document.getElementById('edit-suppressor-id').value, calibers = Array.from(document.querySelectorAll('#modal-suppressor-calibers-list input:checked')).map(cb => cb.value);
+    const manufacturer = document.getElementById('modal-suppressor-make').value, model = document.getElementById('modal-suppressor-model').value, sku = document.getElementById('modal-suppressor-sku').value, serial = document.getElementById('modal-suppressor-serial').value, purchased = document.getElementById('modal-suppressor-purchased').value, cost = parseFloat(document.getElementById('modal-suppressor-cost').value) || 0, interval = parseInt(document.getElementById('modal-suppressor-interval').value), status = document.getElementById('modal-suppressor-status').value, editId = document.getElementById('edit-suppressor-id').value, calibers = Array.from(document.querySelectorAll('#modal-suppressor-calibers-list input:checked')).map(cb => cb.value);
     if (!manufacturer) return alert('Manufacturer required');
-    if (editId) { const sup = data.suppressors.find(s => s.id === editId); Object.assign(sup, { manufacturer, model, sku, calibers, serial, cleanInterval: interval, status }); }
-    else { data.suppressors.push({ id: generateId(), manufacturer, model, sku, calibers, serial, rounds: 0, lastService: 0, cleanInterval: interval, status }); }
+    const supData = { manufacturer, model, sku, serial, purchaseDate: purchased, purchaseCost: cost, calibers, cleanInterval: interval, status };
+    if (editId) { const sup = data.suppressors.find(s => s.id === editId); Object.assign(sup, supData); }
+    else { data.suppressors.push({ id: generateId(), ...supData, rounds: 0, lastService: 0 }); }
     closeModal('suppressor-modal'); save();
 }
 
 function editSuppressor(id) {
     const sup = data.suppressors.find(s => s.id === id); if (!sup) return;
-    populateDropdown('modal-suppressor-make', data.manufacturers, sup.manufacturer); populateCheckboxList('modal-suppressor-calibers-list', data.calibers.map(getCaliberFullName), sup.calibers || []);
+    populateDropdown('modal-suppressor-make', data.suppressorManufacturers, sup.manufacturer); populateCheckboxList('modal-suppressor-calibers-list', data.calibers.map(getCaliberFullName), sup.calibers || []);
+    document.getElementById('suppressor-modal-title').innerText = 'Edit Suppressor';
     document.getElementById('edit-suppressor-id').value = sup.id; document.getElementById('modal-suppressor-model').value = sup.model;
     document.getElementById('modal-suppressor-sku').value = sup.sku || ''; document.getElementById('modal-suppressor-serial').value = sup.serial;
-    document.getElementById('modal-suppressor-interval').value = sup.cleanInterval; document.getElementById('modal-suppressor-status').value = sup.status; openModal('suppressor-modal');
+    document.getElementById('modal-suppressor-purchased').value = sup.purchaseDate || '';
+    document.getElementById('modal-suppressor-cost').value = sup.purchaseCost || 0;
+    document.getElementById('modal-suppressor-interval').value = sup.cleanInterval; document.getElementById('modal-suppressor-status').value = sup.status; 
+    document.getElementById('suppressor-advanced-section').style.display = (sup.sku || sup.serial || sup.purchaseDate || sup.purchaseCost) ? 'block' : 'none';
+    document.getElementById('suppressor-advanced-icon').innerText = (sup.sku || sup.serial || sup.purchaseDate || sup.purchaseCost) ? '▲' : '▼';
+    openModal('suppressor-modal');
 }
 
 function deleteSuppressor(id) { if (confirm('Are you sure?')) { data.suppressors = data.suppressors.filter(s => s.id !== id); save(); } }

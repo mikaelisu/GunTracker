@@ -113,12 +113,36 @@
         <div id="settings" class="tab-content">
             <div class="grid">
                 <div class="card">
-                    <h2>Manage Manufacturers</h2>
-                    <div style="display:flex; gap:5px; margin-bottom:15px;">
-                        <input type="text" id="new-manufacturer" placeholder="New Manufacturer..." style="margin:0; padding:10px; background:#252525; border:1px solid var(--border); color:var(--text); border-radius:4px; flex-grow:1;">
-                        <button onclick="addItem('manufacturers', 'new-manufacturer')">Add</button>
+                    <h2>Manufacturers</h2>
+                    <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap:20px;">
+                        <!-- Firearm Man -->
+                        <div style="background:#252525; padding:15px; border-radius:4px;">
+                            <strong style="color:var(--accent); display:block; margin-bottom:10px;">Firearms</strong>
+                            <div style="display:flex; gap:5px; margin-bottom:10px;">
+                                <input type="text" id="new-man-gun" placeholder="New brand..." style="margin:0; padding:8px;">
+                                <button onclick="addItem('gunManufacturers', 'new-man-gun')">Add</button>
+                            </div>
+                            <div id="man-list-gun" style="max-height:250px; overflow-y:auto; font-size:0.9em;"></div>
+                        </div>
+                        <!-- Suppressor Man -->
+                        <div style="background:#252525; padding:15px; border-radius:4px;">
+                            <strong style="color:var(--accent); display:block; margin-bottom:10px;">Suppressors</strong>
+                            <div style="display:flex; gap:5px; margin-bottom:10px;">
+                                <input type="text" id="new-man-sup" placeholder="New brand..." style="margin:0; padding:8px;">
+                                <button onclick="addItem('suppressorManufacturers', 'new-man-sup')">Add</button>
+                            </div>
+                            <div id="man-list-sup" style="max-height:250px; overflow-y:auto; font-size:0.9em;"></div>
+                        </div>
+                        <!-- Optic Man -->
+                        <div style="background:#252525; padding:15px; border-radius:4px;">
+                            <strong style="color:var(--accent); display:block; margin-bottom:10px;">Optics</strong>
+                            <div style="display:flex; gap:5px; margin-bottom:10px;">
+                                <input type="text" id="new-man-opt" placeholder="New brand..." style="margin:0; padding:8px;">
+                                <button onclick="addItem('opticManufacturers', 'new-man-opt')">Add</button>
+                            </div>
+                            <div id="man-list-opt" style="max-height:250px; overflow-y:auto; font-size:0.9em;"></div>
+                        </div>
                     </div>
-                    <div id="manufacturer-list-mgmt" style="max-height:400px; overflow-y:auto;"></div>
                 </div>
                 <div class="card">
                     <h2>Manage Calibers</h2>
@@ -197,7 +221,10 @@
                 <option value="Shotgun">Shotgun</option>
             </select>
             <label>Manufacturer</label>
-            <select id="modal-gun-make"></select>
+            <div style="display:flex; gap:5px; align-items:center;">
+                <select id="modal-gun-make" style="flex-grow:1; margin:0;"></select>
+                <button class="secondary" style="padding:5px 10px;" onclick="promptNewManufacturer('gunManufacturers', 'modal-gun-make')">+</button>
+            </div>
             <label>Model</label>
             <input type="text" id="modal-gun-model" placeholder="e.g. 19 Gen 5">
             <label>Caliber</label>
@@ -206,8 +233,17 @@
             <input type="text" id="modal-gun-sku" placeholder="e.g. 123-ABC">
             <label>Serial Number</label>
             <input type="text" id="modal-gun-serial" placeholder="Optional">
-            <label>Estimated Initial Rounds (Pre-ArmorLog)</label>
-            <input type="number" id="modal-gun-initial-rounds" value="0">
+            <div style="margin-top: 15px; padding: 10px; background: #252525; border-radius: 4px; cursor: pointer; border: 1px solid var(--border);" onclick="toggleGunAdvanced()">
+                <strong style="display:flex; justify-content:space-between; align-items:center;">Advanced Options <span id="gun-advanced-icon">▼</span></strong>
+            </div>
+            <div id="gun-advanced-section" style="display:none; padding: 10px; background: #2a2a2a; border-radius: 0 0 4px 4px; margin-top: -5px; border: 1px solid var(--border); border-top: none;">
+                <label>Estimated Initial Rounds (Pre-ArmorLog)</label>
+                <input type="number" id="modal-gun-initial-rounds" value="0">
+                <label>Purchase Date</label>
+                <input type="date" id="modal-gun-purchased">
+                <label>Purchase Cost ($)</label>
+                <input type="number" id="modal-gun-cost" step="0.01" placeholder="0.00">
+            </div>
             <label>Barrel Cleaning Interval (rounds)</label>
             <input type="number" id="modal-gun-interval" value="500">
             <div id="bolt-interval-container">
@@ -234,15 +270,28 @@
             <h2 id="suppressor-modal-title">Add New Suppressor</h2>
             <input type="hidden" id="edit-suppressor-id">
             <label>Manufacturer</label>
-            <select id="modal-suppressor-make"></select>
+            <div style="display:flex; gap:5px; align-items:center;">
+                <select id="modal-suppressor-make" style="flex-grow:1; margin:0;"></select>
+                <button class="secondary" style="padding:5px 10px;" onclick="promptNewManufacturer('suppressorManufacturers', 'modal-suppressor-make')">+</button>
+            </div>
             <label>Model</label>
             <input type="text" id="modal-suppressor-model" placeholder="e.g. Sandman-S">
             <label>Compatible Calibers</label>
             <div id="modal-suppressor-calibers-list" style="max-height: 150px; overflow-y: auto; background: #252525; padding: 10px; border-radius: 4px; border: 1px solid var(--border); margin-bottom:10px;"></div>
-            <label>SKU</label>
-            <input type="text" id="modal-suppressor-sku" placeholder="e.g. 789-XYZ">
-            <label>Serial Number</label>
-            <input type="text" id="modal-suppressor-serial" placeholder="Optional">
+            
+            <div style="margin-top: 15px; padding: 10px; background: #252525; border-radius: 4px; cursor: pointer; border: 1px solid var(--border);" onclick="toggleSuppressorAdvanced()">
+                <strong style="display:flex; justify-content:space-between; align-items:center;">Advanced Options <span id="suppressor-advanced-icon">▼</span></strong>
+            </div>
+            <div id="suppressor-advanced-section" style="display:none; padding: 10px; background: #2a2a2a; border-radius: 0 0 4px 4px; margin-top: -5px; border: 1px solid var(--border); border-top: none;">
+                <label>SKU</label>
+                <input type="text" id="modal-suppressor-sku" placeholder="e.g. 789-XYZ">
+                <label>Serial Number</label>
+                <input type="text" id="modal-suppressor-serial" placeholder="Optional">
+                <label>Purchase Date</label>
+                <input type="date" id="modal-suppressor-purchased">
+                <label>Purchase Cost ($)</label>
+                <input type="number" id="modal-suppressor-cost" step="0.01" placeholder="0.00">
+            </div>
             <label>Cleaning Interval (rounds)</label>
             <input type="number" id="modal-suppressor-interval" value="1000">
             <label>Status</label>
@@ -268,7 +317,10 @@
                 <!-- Left Column: Core Info -->
                 <div style="flex: 1; min-width: 300px;">
                     <label>Manufacturer</label>
-                    <select id="modal-optic-make"></select>
+                    <div style="display:flex; gap:5px; align-items:center; margin-bottom:10px;">
+                        <select id="modal-optic-make" style="flex-grow:1; margin:0;"></select>
+                        <button class="secondary" style="padding:5px 10px;" onclick="promptNewManufacturer('opticManufacturers', 'modal-optic-make')">+</button>
+                    </div>
                     <label>Model</label>
                     <input type="text" id="modal-optic-model" placeholder="e.g. Romeo 5">
                     
@@ -280,13 +332,17 @@
                     </select>
 
                     <div style="margin-top: 15px; padding: 10px; background: #252525; border-radius: 4px; cursor: pointer; border: 1px solid var(--border);" onclick="toggleOpticAdvanced()">
-                        <strong style="display:flex; justify-content:space-between; align-items:center;">Advanced Options (SKU, Serial) <span id="optic-advanced-icon">▼</span></strong>
+                        <strong style="display:flex; justify-content:space-between; align-items:center;">Advanced Options <span id="optic-advanced-icon">▼</span></strong>
                     </div>
                     <div id="optic-advanced-section" style="display:none; padding: 10px; background: #2a2a2a; border-radius: 0 0 4px 4px; margin-top: -5px; border: 1px solid var(--border); border-top: none;">
                         <label>SKU</label>
                         <input type="text" id="modal-optic-sku" placeholder="e.g. SIG-R5">
                         <label>Serial Number</label>
                         <input type="text" id="modal-optic-serial" placeholder="Optional">
+                        <label>Purchase Date</label>
+                        <input type="date" id="modal-optic-purchased">
+                        <label>Purchase Cost ($)</label>
+                        <input type="number" id="modal-optic-cost" step="0.01" placeholder="0.00">
                     </div>
                 </div>
 
