@@ -2,3 +2,6 @@
 node_modules
 config.json
 conductor/
+test-data.json
+playwright-report/
+test-results/
