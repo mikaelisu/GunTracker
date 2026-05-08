@@ -1,14 +1,20 @@
 const API_URL = '/api/data';
-let data = { guns: [], suppressors: [], optics: [], ammo: {}, history: [], gunManufacturers: [], suppressorManufacturers: [], opticManufacturers: [], calibers: [], units: [], maintenance: [] };
+let data = { guns: [], suppressors: [], optics: [], ammo: {}, history: [], ammoLog: [], gunManufacturers: [], suppressorManufacturers: [], opticManufacturers: [], calibers: [], units: [], maintenance: [] };
 let charts = {};
 let tableSort = { column: 'manufacturer', direction: 'asc' };
 let collapsedGroups = {};
+let activeFilters = { gunUse: [], ammoTime: [], gunTypes: [], gunCalibers: [] };
 
 async function load() {
     try {
         const response = await fetch(API_URL);
         const rawData = await response.json();
         data = migrateData(rawData);
+        // Default filters to all
+        activeFilters.gunUse = data.guns.map(g => g.id);
+        activeFilters.ammoTime = Object.keys(data.ammo);
+        activeFilters.gunTypes = [...new Set(data.guns.map(g => g.type))];
+        activeFilters.gunCalibers = [...new Set(data.guns.map(g => g.caliber))];
         render();
     } catch (err) {
         console.error('Failed to load data:', err);
@@ -52,6 +58,7 @@ function migrateData(oldData) {
         optics: oldData.optics || [],
         ammo: {},
         history: oldData.history || [],
+        ammoLog: oldData.ammoLog || [],
         maintenance: oldData.maintenance || [],
         gunManufacturers: oldData.gunManufacturers || [],
         suppressorManufacturers: oldData.suppressorManufacturers || [],
@@ -765,15 +772,76 @@ function deleteSuppressor(id) { if (confirm('Are you sure?')) { data.suppressors
 function editAmmo(caliber) {
     const info = data.ammo[caliber]; if (!info) return;
     populateDropdown('modal-ammo-caliber', data.calibers.map(getCaliberFullName), caliber);
-    document.getElementById('modal-ammo-qty').value = '0'; document.getElementById('modal-ammo-min').value = info.minStock; openModal('ammo-modal');
+    document.querySelector('input[name="ammo-mode"][value="add"]').checked = true;
+    toggleAmmoMode();
+    document.getElementById('modal-ammo-qty').value = '0'; 
+    document.getElementById('modal-ammo-min').value = info.minStock; 
+    document.getElementById('modal-ammo-date').valueAsDate = new Date();
+    openModal('ammo-modal');
 }
 
-function openAmmoModal() { populateDropdown('modal-ammo-caliber', data.calibers.map(getCaliberFullName)); document.getElementById('modal-ammo-qty').value = ''; openModal('ammo-modal'); }
+function openAmmoModal() { 
+    populateDropdown('modal-ammo-caliber', data.calibers.map(getCaliberFullName)); 
+    document.querySelector('input[name="ammo-mode"][value="add"]').checked = true;
+    toggleAmmoMode();
+    document.getElementById('modal-ammo-qty').value = ''; 
+    document.getElementById('modal-ammo-min').value = '100';
+    document.getElementById('modal-ammo-date').valueAsDate = new Date();
+    openModal('ammo-modal'); 
+}
+
+function toggleAmmoMode() {
+    const mode = document.querySelector('input[name="ammo-mode"]:checked').value;
+    const dateContainer = document.getElementById('ammo-date-container');
+    const qtyLabel = document.getElementById('ammo-qty-label');
+    
+    if (mode === 'audit') {
+        dateContainer.style.display = 'none';
+        qtyLabel.innerText = 'Actual Current Quantity';
+    } else {
+        dateContainer.style.display = 'block';
+        qtyLabel.innerText = 'Quantity to Add';
+    }
+}
 
 function saveAmmo() {
-    const caliber = document.getElementById('modal-ammo-caliber').value, qty = parseInt(document.getElementById('modal-ammo-qty').value) || 0, min = parseInt(document.getElementById('modal-ammo-min').value) || 0;
-    if (!caliber) return; if (!data.ammo[caliber]) data.ammo[caliber] = { qty: 0, minStock: min };
-    data.ammo[caliber].qty += qty; data.ammo[caliber].minStock = min; closeModal('ammo-modal'); save();
+    const caliber = document.getElementById('modal-ammo-caliber').value;
+    const qty = parseInt(document.getElementById('modal-ammo-qty').value) || 0;
+    const min = parseInt(document.getElementById('modal-ammo-min').value) || 0;
+    const mode = document.querySelector('input[name="ammo-mode"]:checked').value;
+    const date = document.getElementById('modal-ammo-date').value;
+
+    if (!caliber) return alert('Please select a caliber');
+    if (!data.ammo[caliber]) data.ammo[caliber] = { qty: 0, minStock: min };
+    
+    if (mode === 'add') {
+        if (!date) return alert('Please select a date for addition');
+        data.ammo[caliber].qty += qty;
+        data.ammoLog.push({
+            id: generateId(),
+            date,
+            caliber,
+            type: 'add',
+            qtyChange: qty,
+            currentQty: data.ammo[caliber].qty
+        });
+    } else {
+        const oldQty = data.ammo[caliber].qty;
+        data.ammo[caliber].qty = qty;
+        data.ammoLog.push({
+            id: generateId(),
+            date: new Date().toISOString().split('T')[0],
+            caliber,
+            type: 'audit',
+            qtyChange: qty - oldQty,
+            currentQty: qty
+        });
+    }
+    
+    data.ammo[caliber].minStock = min;
+    data.ammoLog.sort((a, b) => new Date(b.date) - new Date(a.date));
+    closeModal('ammo-modal'); 
+    save();
 }
 
 function openSessionModal(gunId) {
@@ -864,15 +932,237 @@ function updateGlobalStats() {
 }
 
 function updateCharts() {
-    const ctxRounds = document.getElementById('roundsChart')?.getContext('2d'), ctxAmmo = document.getElementById('ammoChart')?.getContext('2d'), ctxUsage = document.getElementById('usageChart')?.getContext('2d');
+    const ctxRounds = document.getElementById('roundsChart')?.getContext('2d'), 
+          ctxAmmo = document.getElementById('ammoChart')?.getContext('2d'), 
+          ctxUsage = document.getElementById('usageChart')?.getContext('2d'),
+          ctxGunTime = document.getElementById('gunUseTimeChart')?.getContext('2d'),
+          ctxAmmoTime = document.getElementById('ammoTimeChart')?.getContext('2d');
+
     if (!ctxRounds || !ctxAmmo || !ctxUsage) return;
-    if (charts.rounds) charts.rounds.destroy(); if (charts.ammo) charts.ammo.destroy(); if (charts.usage) charts.usage.destroy();
+    
+    // Destroy existing charts
+    ['rounds', 'ammo', 'usage', 'gunTime', 'ammoTime'].forEach(c => {
+        if (charts[c]) charts[c].destroy();
+    });
+
     const selectedType = document.getElementById('chart-type-filter').value;
     const filteredGuns = data.guns.filter(g => selectedType === 'All' || g.type === selectedType);
-    charts.rounds = new Chart(ctxRounds, { type: 'bar', data: { labels: filteredGuns.map(g => `${g.manufacturer} ${g.model}`), datasets: [{ label: 'Total Rounds', data: filteredGuns.map(g => (g.initialRounds || 0) + g.rounds), backgroundColor: '#cfb53b' }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, zoom: { zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' }, pan: { enabled: true, mode: 'x' } } } } });
+    
+    // 1. Rounds Fired Bar Chart
+    charts.rounds = new Chart(ctxRounds, { 
+        type: 'bar', 
+        data: { 
+            labels: filteredGuns.map(g => `${g.manufacturer} ${g.model}`), 
+            datasets: [{ label: 'Total Rounds', data: filteredGuns.map(g => (g.initialRounds || 0) + g.rounds), backgroundColor: '#cfb53b' }] 
+        }, 
+        options: { 
+            responsive: true, 
+            maintainAspectRatio: false, 
+            plugins: { 
+                legend: { display: false },
+                zoom: {
+                    zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' },
+                    pan: { enabled: true, mode: 'x' }
+                }
+            } 
+        } 
+    });
+    
+    // 2. Current Ammo Doughnut
     charts.ammo = new Chart(ctxAmmo, { type: 'doughnut', data: { labels: Object.keys(data.ammo), datasets: [{ data: Object.values(data.ammo).map(a => a.qty), backgroundColor: ['#cfb53b', '#555', '#888', '#aaa', '#03dac6'] }] }, options: { responsive: true, maintainAspectRatio: false } });
+    
+    // 3. Ammo Usage Bar Chart
     const usageData = {}; data.history.forEach(session => { usageData[session.caliber] = (usageData[session.caliber] || 0) + session.rounds; });
-    charts.usage = new Chart(ctxUsage, { type: 'bar', data: { labels: Object.keys(usageData), datasets: [{ label: 'Rounds Fired', data: Object.values(usageData), backgroundColor: '#cf6679' }] }, options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', plugins: { legend: { display: false }, zoom: { zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'y' }, pan: { enabled: true, mode: 'y' } } } } });
+    charts.usage = new Chart(ctxUsage, { 
+        type: 'bar', 
+        data: { 
+            labels: Object.keys(usageData), 
+            datasets: [{ label: 'Rounds Fired', data: Object.values(usageData), backgroundColor: '#cf6679' }] 
+        }, 
+        options: { 
+            responsive: true, 
+            maintainAspectRatio: false, 
+            indexAxis: 'y', 
+            plugins: { 
+                legend: { display: false },
+                zoom: {
+                    zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'y' },
+                    pan: { enabled: true, mode: 'y' }
+                }
+            } 
+        } 
+    });
+
+    // 4. Gun Use Over Time Line Chart
+    if (ctxGunTime) {
+        // Render high-level filters
+        const allTypes = [...new Set(data.guns.map(g => g.type))].sort();
+        const allCalibers = [...new Set(data.guns.map(g => g.caliber))].sort();
+        
+        renderChartFilters('gun-type-filters', allTypes.map(t => ({ id: t, label: t })), 'gunTypes');
+        renderChartFilters('gun-ammo-filters', allCalibers.map(c => ({ id: c, label: c })), 'gunCalibers');
+
+        // Filter guns for specific selection based on high-level filters
+        const gunsMatchingTypesAndCalibers = data.guns.filter(g => 
+            activeFilters.gunTypes.includes(g.type) && 
+            activeFilters.gunCalibers.includes(g.caliber)
+        );
+
+        renderChartFilters('gun-use-filters', gunsMatchingTypesAndCalibers.map(g => ({ id: g.id, label: `${g.manufacturer} ${g.model}` })), 'gunUse');
+        
+        const range = document.getElementById('gunTime-range')?.value || 'all';
+        let cutoff = null;
+        if (range !== 'all') {
+            cutoff = new Date();
+            cutoff.setDate(cutoff.getDate() - parseInt(range));
+        }
+
+        const datasets = gunsMatchingTypesAndCalibers.filter(g => activeFilters.gunUse.includes(g.id)).map(gun => {
+            const gunHistory = data.history.filter(h => h.gunId === gun.id).sort((a, b) => new Date(a.date) - new Date(b.date));
+            
+            let cumulative = gun.initialRounds || 0;
+            let points = [];
+            
+            // Initial point at start of all time
+            const startOfTime = gunHistory.length > 0 ? gunHistory[0].date : new Date().toISOString().split('T')[0];
+            
+            if (!cutoff || new Date(startOfTime) >= cutoff) {
+                points.push({ x: startOfTime, y: cumulative });
+            }
+
+            gunHistory.forEach(h => {
+                cumulative += h.rounds;
+                if (!cutoff || new Date(h.date) >= cutoff) {
+                    // If this is the first point after cutoff and we haven't added a cutoff point, add it
+                    if (cutoff && points.length === 0) {
+                        // Find value at cutoff by subtracting this session if it's the first one after cutoff
+                        // (Actually it's better to just track the cumulative and only add points >= cutoff)
+                        points.push({ x: cutoff.toISOString().split('T')[0], y: cumulative - h.rounds });
+                    }
+                    points.push({ x: h.date, y: cumulative });
+                }
+            });
+
+            // If no points yet (all history before cutoff), add a point at cutoff with current cumulative
+            if (cutoff && points.length === 0) {
+                points.push({ x: cutoff.toISOString().split('T')[0], y: cumulative });
+                points.push({ x: new Date().toISOString().split('T')[0], y: cumulative });
+            }
+
+            return {
+                label: `${gun.manufacturer} ${gun.model}`,
+                data: points,
+                borderColor: '#' + Math.floor(Math.random()*16777215).toString(16),
+                tension: 0.1,
+                fill: false
+            };
+        });
+        charts.gunTime = new Chart(ctxGunTime, {
+            type: 'line',
+            data: { datasets },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: { x: { type: 'time' }, y: { beginAtZero: true } },
+                plugins: {
+                    zoom: {
+                        zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'xy' },
+                        pan: { enabled: true, mode: 'xy' }
+                    }
+                }
+            }
+        });
+    }
+
+    // 5. Ammo Inventory Over Time
+    if (ctxAmmoTime) {
+        renderChartFilters('ammo-time-filters', Object.keys(data.ammo).map(cal => ({ id: cal, label: cal })), 'ammoTime');
+        
+        const range = document.getElementById('ammoTime-range')?.value || 'all';
+        let cutoff = null;
+        if (range !== 'all') {
+            cutoff = new Date();
+            cutoff.setDate(cutoff.getDate() - parseInt(range));
+        }
+
+        const datasets = Object.keys(data.ammo).filter(cal => activeFilters.ammoTime.includes(cal)).map(caliber => {
+            const events = [
+                ...data.history.filter(h => h.caliber === caliber).map(h => ({ date: h.date, change: -h.rounds })),
+                ...data.ammoLog.filter(l => l.caliber === caliber).map(l => ({ date: l.date, change: l.qtyChange, isAudit: l.type === 'audit', current: l.currentQty }))
+            ].sort((a, b) => new Date(a.date) - new Date(b.date));
+
+            let current = data.ammo[caliber].qty;
+            let allPoints = [{ x: new Date().toISOString().split('T')[0], y: current }];
+            
+            [...events].reverse().forEach(e => {
+                if (e.isAudit) {
+                    current = e.current - e.change;
+                    allPoints.push({ x: e.date, y: e.current });
+                } else {
+                    current -= e.change;
+                    allPoints.push({ x: e.date, y: current + e.change });
+                }
+            });
+            allPoints.sort((a, b) => new Date(a.x) - new Date(b.x));
+
+            // Filter points by cutoff
+            let filteredPoints = allPoints;
+            if (cutoff) {
+                filteredPoints = allPoints.filter(p => new Date(p.x) >= cutoff);
+                // Find the last point before cutoff to establish baseline at cutoff
+                const beforeCutoff = allPoints.filter(p => new Date(p.x) < cutoff);
+                if (beforeCutoff.length > 0) {
+                    const lastBefore = beforeCutoff[beforeCutoff.length - 1];
+                    filteredPoints.unshift({ x: cutoff.toISOString().split('T')[0], y: lastBefore.y });
+                } else if (allPoints.length > 0) {
+                    // If the first point is after cutoff, start at its value or 0? 
+                    // Re-calculate baseline
+                }
+            }
+
+            return {
+                label: caliber,
+                data: filteredPoints,
+                borderColor: '#' + Math.floor(Math.random()*16777215).toString(16),
+                tension: 0.1,
+                fill: false
+            };
+        });
+        charts.ammoTime = new Chart(ctxAmmoTime, {
+            type: 'line',
+            data: { datasets },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: { x: { type: 'time' }, y: { beginAtZero: true } },
+                plugins: {
+                    zoom: {
+                        zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'xy' },
+                        pan: { enabled: true, mode: 'xy' }
+                    }
+                }
+            }
+        });
+    }
+}
+
+function renderChartFilters(containerId, items, filterKey) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    container.innerHTML = items.map(item => `
+        <label style="display:flex; align-items:center; gap:5px; font-size:0.85em; cursor:pointer;">
+            <input type="checkbox" value="${item.id}" ${activeFilters[filterKey].includes(item.id) ? 'checked' : ''} 
+                   onchange="toggleFilter('${filterKey}', '${item.id}')" style="width:auto; margin:0;">
+            ${item.label}
+        </label>
+    `).join('');
+}
+
+function toggleFilter(filterKey, id) {
+    const idx = activeFilters[filterKey].indexOf(id);
+    if (idx > -1) activeFilters[filterKey].splice(idx, 1);
+    else activeFilters[filterKey].push(id);
+    updateCharts();
 }
 
 function showTrend(gunId) {
@@ -1019,4 +1309,38 @@ function updateValuationCharts() {
             }
         }
     });
+}
+
+function resetZoom(chartKey) {
+    if (charts[chartKey]) charts[chartKey].resetZoom();
+}
+
+function manualZoom(chartKey, axis, factor) {
+    if (!charts[chartKey]) return;
+    const chart = charts[chartKey];
+    if (axis === 'x') chart.zoom({ x: factor });
+    else if (axis === 'y') chart.zoom({ y: factor });
+    else chart.zoom(factor);
+}
+
+function panChart(chartKey, axis, percent) {
+    if (!charts[chartKey]) return;
+    const chart = charts[chartKey];
+    const scale = axis === 'x' ? chart.scales.x : chart.scales.y;
+    if (!scale) return;
+    
+    // Calculate total range and visible range
+    const min = scale.min !== undefined ? scale.min : (axis === 'x' ? scale._userMin : scale.min);
+    const max = scale.max !== undefined ? scale.max : (axis === 'x' ? scale._userMax : scale.max);
+    
+    // We actually want to control the panned offset. 
+    // chartjs-plugin-zoom has a pan method.
+    // However, it's easier to just call chart.pan({ [axis]: delta })
+    // To make it behave like a scrollbar, we track previous value or use absolute sync.
+    
+    if (!chart._prevPan) chart._prevPan = {};
+    const prev = chart._prevPan[axis] || 50;
+    const delta = (percent - prev) * -5; // Adjust sensitivity
+    chart.pan({ [axis]: delta });
+    chart._prevPan[axis] = percent;
 }

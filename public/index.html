@@ -6,6 +6,7 @@
     <title>ArmorLog | Inventory & Maintenance</title>
     <link rel="stylesheet" href="css/style.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom"></script>
 </head>
 <body>
@@ -229,15 +230,73 @@
                 <div class="card">
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
                         <h2 style="margin:0;">Rounds Fired per Firearm</h2>
-                        <select id="chart-type-filter" onchange="updateCharts()" style="width:auto; margin:0; padding:5px;">
-                            <option value="All">All Types</option>
-                            <option value="Rifle">Rifles</option>
-                            <option value="Pistol">Pistols</option>
-                            <option value="Shotgun">Shotguns</option>
-                        </select>
+                        <div style="display:flex; gap:5px; align-items:center;">
+                            <div class="chart-controls" style="display:flex; gap:2px;">
+                                <button class="secondary" style="padding:2px 5px; font-size:0.7em;" onclick="resetZoom('rounds')">Fit</button>
+                                <button class="secondary" style="padding:2px 5px; font-size:0.7em;" onclick="manualZoom('rounds', 'x', 1.1)">X+</button>
+                                <button class="secondary" style="padding:2px 5px; font-size:0.7em;" onclick="manualZoom('rounds', 'x', 0.9)">X-</button>
+                            </div>
+                            <select id="chart-type-filter" onchange="updateCharts()" style="width:auto; margin:0; padding:5px;">
+                                <option value="All">All Types</option>
+                                <option value="Rifle">Rifles</option>
+                                <option value="Pistol">Pistols</option>
+                                <option value="Shotgun">Shotguns</option>
+                            </select>
+                        </div>
                     </div>
                     <div style="height: 400px; position: relative;">
                         <canvas id="roundsChart"></canvas>
+                    </div>
+                    <div style="margin-top:10px;">
+                        <input type="range" id="rounds-pan-x" style="width:100%; height:8px;" min="0" max="100" value="50" oninput="panChart('rounds', 'x', this.value)">
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+                        <h2 style="margin:0;">Gun Use Over Time</h2>
+                        <div style="display:flex; gap:10px; align-items:center;">
+                            <select id="gunTime-range" onchange="updateCharts()" style="width:auto; margin:0; padding:5px;">
+                                <option value="all">All Time</option>
+                                <option value="30">Last 30 Days</option>
+                                <option value="90">Last 90 Days</option>
+                                <option value="180">Last 6 Months</option>
+                                <option value="365">Last Year</option>
+                            </select>
+                            <div class="chart-controls" style="display:flex; gap:2px;">
+                                <button class="secondary" style="padding:2px 5px; font-size:0.7em;" onclick="resetZoom('gunTime')">Fit</button>
+                                <button class="secondary" style="padding:2px 5px; font-size:0.7em;" onclick="manualZoom('gunTime', 'x', 1.1)">X+</button>
+                                <button class="secondary" style="padding:2px 5px; font-size:0.7em;" onclick="manualZoom('gunTime', 'x', 0.9)">X-</button>
+                                <button class="secondary" style="padding:2px 5px; font-size:0.7em;" onclick="manualZoom('gunTime', 'y', 1.1)">Y+</button>
+                                <button class="secondary" style="padding:2px 5px; font-size:0.7em;" onclick="manualZoom('gunTime', 'y', 0.9)">Y-</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div style="margin-bottom:10px; font-size:0.9em; color:var(--text-muted);">Filters:</div>
+                    <div style="display:flex; flex-direction:column; gap:10px; margin-bottom:15px; padding:10px; background:#252525; border-radius:4px;">
+                        <div style="display:flex; gap:10px; border-bottom:1px solid #333; padding-bottom:8px;">
+                            <span style="font-weight:bold; min-width:80px; font-size:0.85em; color:var(--accent);">By Type:</span>
+                            <div id="gun-type-filters" style="display:flex; flex-wrap:wrap; gap:15px;"></div>
+                        </div>
+                        <div style="display:flex; gap:10px; border-bottom:1px solid #333; padding-bottom:8px;">
+                            <span style="font-weight:bold; min-width:80px; font-size:0.85em; color:var(--accent);">By Ammo:</span>
+                            <div id="gun-ammo-filters" style="display:flex; flex-wrap:wrap; gap:15px;"></div>
+                        </div>
+                        <div style="display:flex; gap:10px;">
+                            <span style="font-weight:bold; min-width:80px; font-size:0.85em; color:var(--accent);">Firearms:</span>
+                            <div id="gun-use-filters" style="display:flex; flex-wrap:wrap; gap:15px;"></div>
+                        </div>
+                    </div>
+                    <div style="display:flex; gap:10px;">
+                        <div style="flex-grow:1; height: 400px; position: relative;">
+                            <canvas id="gunUseTimeChart"></canvas>
+                        </div>
+                        <div style="width:20px; display:flex; flex-direction:column; justify-content:center;">
+                            <input type="range" id="gunTime-pan-y" style="height:350px; appearance:slider-vertical;" min="0" max="100" value="50" oninput="panChart('gunTime', 'y', this.value)">
+                        </div>
+                    </div>
+                    <div style="margin-top:10px; padding-right:30px;">
+                        <input type="range" id="gunTime-pan-x" style="width:100%; height:8px;" min="0" max="100" value="50" oninput="panChart('gunTime', 'x', this.value)">
                     </div>
                 </div>
             </div>
@@ -253,10 +312,55 @@
                     </div>
                 </div>
                 <div class="card">
-                    <h2>Total Ammo Consumed by Caliber</h2>
-                    <div style="height: 400px; position: relative;">
-                        <canvas id="usageChart"></canvas>
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+                        <h2 style="margin:0;">Total Ammo Consumed by Caliber</h2>
+                        <div class="chart-controls" style="display:flex; gap:2px;">
+                            <button class="secondary" style="padding:2px 5px; font-size:0.7em;" onclick="resetZoom('usage')">Fit</button>
+                            <button class="secondary" style="padding:2px 5px; font-size:0.7em;" onclick="manualZoom('usage', 'y', 1.1)">Y+</button>
+                            <button class="secondary" style="padding:2px 5px; font-size:0.7em;" onclick="manualZoom('usage', 'y', 0.9)">Y-</button>
+                        </div>
                     </div>
+                    <div style="display:flex; gap:10px;">
+                        <div style="flex-grow:1; height: 400px; position: relative;">
+                            <canvas id="usageChart"></canvas>
+                        </div>
+                        <div style="width:20px; display:flex; flex-direction:column; justify-content:center;">
+                            <input type="range" id="usage-pan-y" style="height:350px; appearance:slider-vertical;" min="0" max="100" value="50" oninput="panChart('usage', 'y', this.value)">
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="card" style="margin-top:20px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+                    <h2 style="margin:0;">Ammo Inventory Over Time</h2>
+                    <div style="display:flex; gap:10px; align-items:center;">
+                        <select id="ammoTime-range" onchange="updateCharts()" style="width:auto; margin:0; padding:5px;">
+                            <option value="all">All Time</option>
+                            <option value="30">Last 30 Days</option>
+                            <option value="90">Last 90 Days</option>
+                            <option value="180">Last 6 Months</option>
+                            <option value="365">Last Year</option>
+                        </select>
+                        <div class="chart-controls" style="display:flex; gap:2px;">
+                            <button class="secondary" style="padding:2px 5px; font-size:0.7em;" onclick="resetZoom('ammoTime')">Fit</button>
+                            <button class="secondary" style="padding:2px 5px; font-size:0.7em;" onclick="manualZoom('ammoTime', 'x', 1.1)">X+</button>
+                            <button class="secondary" style="padding:2px 5px; font-size:0.7em;" onclick="manualZoom('ammoTime', 'x', 0.9)">X-</button>
+                            <button class="secondary" style="padding:2px 5px; font-size:0.7em;" onclick="manualZoom('ammoTime', 'y', 1.1)">Y+</button>
+                            <button class="secondary" style="padding:2px 5px; font-size:0.7em;" onclick="manualZoom('ammoTime', 'y', 0.9)">Y-</button>
+                        </div>
+                    </div>
+                </div>
+                <div id="ammo-time-filters" style="display:flex; flex-wrap:wrap; gap:10px; margin-bottom:15px; padding:10px; background:#252525; border-radius:4px;"></div>
+                <div style="display:flex; gap:10px;">
+                    <div style="flex-grow:1; height: 400px; position: relative;">
+                        <canvas id="ammoTimeChart"></canvas>
+                    </div>
+                    <div style="width:20px; display:flex; flex-direction:column; justify-content:center;">
+                        <input type="range" id="ammoTime-pan-y" style="height:350px; appearance:slider-vertical;" min="0" max="100" value="50" oninput="panChart('ammoTime', 'y', this.value)">
+                    </div>
+                </div>
+                <div style="margin-top:10px; padding-right:30px;">
+                    <input type="range" id="ammoTime-pan-x" style="width:100%; height:8px;" min="0" max="100" value="50" oninput="panChart('ammoTime', 'x', this.value)">
                 </div>
             </div>
         </div>
@@ -426,13 +530,31 @@
 
     <div id="ammo-modal" class="modal">
         <div class="modal-content">
-            <h2>Add / Update Ammo</h2>
+            <h2 id="ammo-modal-title">Add / Update Ammo</h2>
+            
+            <div style="display:flex; gap:10px; margin-bottom:15px; padding:10px; background:#252525; border-radius:4px; border:1px solid var(--border);">
+                <label style="margin:0; display:flex; align-items:center; gap:5px; cursor:pointer;">
+                    <input type="radio" name="ammo-mode" value="add" checked onclick="toggleAmmoMode()" style="width:auto; margin:0;"> Add Stock
+                </label>
+                <label style="margin:0; display:flex; align-items:center; gap:5px; cursor:pointer;">
+                    <input type="radio" name="ammo-mode" value="audit" onclick="toggleAmmoMode()" style="width:auto; margin:0;"> Audit Stock (Overwrite)
+                </label>
+            </div>
+
             <label>Caliber</label>
             <select id="modal-ammo-caliber" style="margin:5px 0;"></select>
-            <label>Quantity to Add</label>
+            
+            <div id="ammo-date-container">
+                <label>Date</label>
+                <input type="date" id="modal-ammo-date">
+            </div>
+
+            <label id="ammo-qty-label">Quantity to Add</label>
             <input type="number" id="modal-ammo-qty" placeholder="e.g. 500">
+            
             <label>Minimum Stock Alert</label>
             <input type="number" id="modal-ammo-min" value="100">
+            
             <div class="modal-actions">
                 <button class="secondary" onclick="closeModal('ammo-modal')">Cancel</button>
                 <button onclick="saveAmmo()">Save Ammo</button>
