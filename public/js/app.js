@@ -81,7 +81,8 @@ function migrateData(oldData) {
         serial: gun.serial || '',
         cleanInterval: gun.cleanInterval || 500,
         boltCleanInterval: gun.boltCleanInterval || 1000,
-        status: gun.status || 'Ready'
+        status: gun.status || 'Ready',
+        components: gun.components || []
     }));
 
     newData.suppressors = newData.suppressors.map(sup => ({
@@ -237,8 +238,10 @@ function switchDetailsTab(tab) {
     const gun = data.guns.find(g => g.id === gunId);
     document.getElementById('details-history-tab').classList.toggle('active', tab === 'history');
     document.getElementById('details-maint-tab').classList.toggle('active', tab === 'maint');
+    document.getElementById('details-components-tab').classList.toggle('active', tab === 'components');
     document.getElementById('details-history-content').style.display = tab === 'history' ? 'block' : 'none';
     document.getElementById('details-maint-content').style.display = tab === 'maint' ? 'block' : 'none';
+    document.getElementById('details-components-content').style.display = tab === 'components' ? 'block' : 'none';
 
     if (tab === 'history') {
         const hist = data.history.filter(h => h.gunId === gunId).sort((a,b) => new Date(a.date) - new Date(b.date));
@@ -250,7 +253,7 @@ function switchDetailsTab(tab) {
             </tr>`;
         });
         document.getElementById('details-history-list').innerHTML = rows.reverse().join('');
-    } else {
+    } else if (tab === 'maint') {
         const maint = data.maintenance.filter(m => m.gunId === gunId).sort((a,b) => new Date(b.date) - new Date(a.date));
         const rows = maint.map(m => {
             const cumulativeAtMaint = data.history
@@ -261,7 +264,92 @@ function switchDetailsTab(tab) {
             </tr>`;
         });
         document.getElementById('details-maint-list').innerHTML = rows.reverse().join('');
+    } else if (tab === 'components') {
+        renderComponents(gunId);
     }
+}
+
+function renderComponents(gunId) {
+    const gun = data.guns.find(g => g.id === gunId);
+    if (!gun) return;
+    const totalRounds = (gun.initialRounds || 0) + gun.rounds;
+    const rows = (gun.components || []).map(c => {
+        const used = totalRounds - c.installedAtRound;
+        const pct = Math.min(100, Math.round((used / c.lifespan) * 100));
+        const statusClass = used >= c.lifespan ? 'warning-text' : '';
+        const statusText = used >= c.lifespan ? '⚠ REPLACE' : 'Good';
+        
+        return `<tr>
+            <td>${c.name}</td>
+            <td>${c.lifespan}</td>
+            <td>
+                <div style="width:100px; background:#444; height:10px; border-radius:5px; overflow:hidden; display:inline-block; margin-right:5px;">
+                    <div style="width:${pct}%; background:${used >= c.lifespan ? 'var(--danger)' : 'var(--accent)'}; height:100%;"></div>
+                </div>
+                ${used}
+            </td>
+            <td class="${statusClass}">${statusText}</td>
+            <td>
+                <button class="secondary" style="padding:2px 8px;" onclick="replaceComponent('${gun.id}', '${c.id}')">Replace</button>
+                <button class="secondary" style="padding:2px 8px; color:var(--danger);" onclick="removeComponent('${gun.id}', '${c.id}')">×</button>
+            </td>
+        </tr>`;
+    });
+    document.getElementById('details-components-list').innerHTML = rows.join('') || '<tr><td colspan="5" style="text-align:center">No components tracked</td></tr>';
+}
+
+function toggleAddComponentForm() {
+    const form = document.getElementById('add-component-form');
+    form.style.display = form.style.display === 'none' ? 'block' : 'none';
+}
+
+function addComponentFromUI() {
+    const gunId = document.getElementById('gun-details-modal').dataset.gunId;
+    const name = document.getElementById('new-comp-name').value.trim();
+    const lifespan = parseInt(document.getElementById('new-comp-lifespan').value);
+    
+    if (!name || isNaN(lifespan)) return alert('Name and Lifespan required');
+    
+    const gun = data.guns.find(g => g.id === gunId);
+    if (!gun) return;
+    
+    const totalRounds = (gun.initialRounds || 0) + gun.rounds;
+    if (!gun.components) gun.components = [];
+    
+    gun.components.push({
+        id: generateId(),
+        name,
+        lifespan,
+        installedAtRound: totalRounds
+    });
+    
+    document.getElementById('new-comp-name').value = '';
+    document.getElementById('new-comp-lifespan').value = '';
+    toggleAddComponentForm();
+    save();
+    renderComponents(gunId);
+}
+
+function replaceComponent(gunId, compId) {
+    if (!confirm('Are you sure you want to replace this component? This will reset its used rounds to 0.')) return;
+    const gun = data.guns.find(g => g.id === gunId);
+    if (!gun) return;
+    const comp = gun.components.find(c => c.id === compId);
+    if (!comp) return;
+    
+    const totalRounds = (gun.initialRounds || 0) + gun.rounds;
+    comp.installedAtRound = totalRounds;
+    save();
+    renderComponents(gunId);
+}
+
+function removeComponent(gunId, compId) {
+    if (!confirm('Remove this component from tracking?')) return;
+    const gun = data.guns.find(g => g.id === gunId);
+    if (!gun) return;
+    gun.components = gun.components.filter(c => c.id !== compId);
+    save();
+    renderComponents(gunId);
 }
 
 function openEditSessionModal(id) {
@@ -732,9 +820,13 @@ function render() {
         const isCollapsed = collapsedGroups[type];
         return `<div class="inventory-group"><div class="group-header" onclick="toggleGroup('${type}')"><strong>${type}s (${gunsOfType.length})</strong><span>${isCollapsed ? '▶' : '▼'}</span></div><div class="group-content ${isCollapsed ? 'collapsed' : ''}">${gunsOfType.map(gun => {
             const totalRounds = (gun.initialRounds || 0) + gun.rounds, roundsSinceClean = totalRounds - (gun.lastService || 0), needsClean = roundsSinceClean >= gun.cleanInterval;
+            
+            // Component lifespan check
+            const needsPartReplacement = (gun.components || []).some(c => (totalRounds - c.installedAtRound) >= c.lifespan);
+            
             let maintInfo = `Total: ${totalRounds} | Barrel: ${roundsSinceClean} / ${gun.cleanInterval}<br>`;
             if (gun.type === 'Rifle') { const roundsSinceBolt = totalRounds - (gun.lastBoltService || 0); maintInfo += `Bolt: ${roundsSinceBolt} / ${gun.boltCleanInterval || 1000}<br>`; if (roundsSinceBolt >= gun.boltCleanInterval) maintInfo += '<span class="warning-text">⚠ BOLT NEEDS CLEANING</span><br>'; }
-            return `<div class="item-card ${needsClean ? 'warning' : ''}" style="cursor:pointer" onclick="openGunDetails('${gun.id}')"><strong>${gun.manufacturer} ${gun.model}</strong><div class="stats">Caliber: ${gun.caliber} | SN: ${gun.serial || 'N/A'}<br>${maintInfo}Status: <span style="color: var(--accent)">${gun.status}</span></div>${needsClean ? '<div class="warning-text">⚠ BARREL NEEDS CLEANING</div>' : ''}<div style="margin-top:10px; display:flex; flex-wrap:wrap; gap:5px;"><button onclick="event.stopPropagation(); openSessionModal('${gun.id}')">Log Session</button><button class="secondary" onclick="event.stopPropagation(); openMaintenanceModal('${gun.id}')">Log Cleaning</button><button class="secondary" onclick="event.stopPropagation(); showTrend('${gun.id}')">📈</button><button class="secondary" onclick="event.stopPropagation(); editGun('${gun.id}')">✎</button></div></div>`;
+            return `<div class="item-card ${(needsClean || needsPartReplacement) ? 'warning' : ''}" style="cursor:pointer" onclick="openGunDetails('${gun.id}')"><strong>${gun.manufacturer} ${gun.model}</strong><div class="stats">Caliber: ${gun.caliber} | SN: ${gun.serial || 'N/A'}<br>${maintInfo}Status: <span style="color: var(--accent)">${gun.status}</span></div>${needsClean ? '<div class="warning-text">⚠ BARREL NEEDS CLEANING</div>' : ''}${needsPartReplacement ? '<div class="warning-text" style="color:var(--danger)">⚠ REPLACE PARTS</div>' : ''}<div style="margin-top:10px; display:flex; flex-wrap:wrap; gap:5px;"><button onclick="event.stopPropagation(); openSessionModal('${gun.id}')">Log Session</button><button class="secondary" onclick="event.stopPropagation(); openMaintenanceModal('${gun.id}')">Log Cleaning</button><button class="secondary" onclick="event.stopPropagation(); showTrend('${gun.id}')">📈</button><button class="secondary" onclick="event.stopPropagation(); editGun('${gun.id}')">✎</button></div></div>`;
         }).join('')}</div></div>`;
     }).join('');
 
@@ -793,6 +885,51 @@ function showTrend(gunId) {
     if (charts.trend) charts.trend.destroy();
     charts.trend = new Chart(document.getElementById('trendChart').getContext('2d'), { type: 'line', data: { labels: labels, datasets: [{ label: 'Cumulative Rounds', data: points, borderColor: '#cfb53b', backgroundColor: 'rgba(207, 181, 59, 0.1)', fill: true, tension: 0.1, pointRadius: 4, pointBackgroundColor: (context) => maintHistory.some(m => m.date === context.chart.data.labels[context.dataIndex]) ? '#cf6679' : '#cfb53b', pointBorderColor: (context) => maintHistory.some(m => m.date === context.chart.data.labels[context.dataIndex]) ? '#fff' : '#cfb53b' }] }, options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true } }, plugins: { legend: { display: false }, tooltip: { callbacks: { afterLabel: (context) => { const maints = maintHistory.filter(m => m.date === context.label); return maints.length > 0 ? maints.map(m => `Maintenance: ${m.type}`).join('\n') : ''; } } }, zoom: { zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'xy' }, pan: { enabled: true, mode: 'xy' } } } } });
 }
+
+function downloadBackup() {
+    const filename = `armorlog-backup-${new Date().toISOString().split('T')[0]}.json`;
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+}
+
+function restoreBackup() {
+    document.getElementById('restore-file-input').click();
+}
+
+async function handleRestoreFile(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+        try {
+            const restoredData = JSON.parse(e.target.result);
+            if (!restoredData.guns || !Array.isArray(restoredData.guns)) {
+                throw new Error('Invalid backup file format: missing guns array.');
+            }
+
+            if (confirm('WARNING: This will overwrite all current data. Are you absolutely sure you want to proceed?')) {
+                data = migrateData(restoredData);
+                await save();
+                alert('Data restored successfully.');
+                location.reload();
+            }
+        } catch (err) {
+            console.error('Restore failed:', err);
+            alert('Restore failed: ' + err.message);
+        }
+        event.target.value = ''; // Reset input
+    };
+    reader.readAsText(file);
+}
+
 load();
 
 function updateValuationCharts() {
