@@ -791,4 +791,49 @@ function showTrend(gunId) {
     if (charts.trend) charts.trend.destroy();
     charts.trend = new Chart(document.getElementById('trendChart').getContext('2d'), { type: 'line', data: { labels: labels, datasets: [{ label: 'Cumulative Rounds', data: points, borderColor: '#cfb53b', backgroundColor: 'rgba(207, 181, 59, 0.1)', fill: true, tension: 0.1, pointRadius: 4, pointBackgroundColor: (context) => maintHistory.some(m => m.date === context.chart.data.labels[context.dataIndex]) ? '#cf6679' : '#cfb53b', pointBorderColor: (context) => maintHistory.some(m => m.date === context.chart.data.labels[context.dataIndex]) ? '#fff' : '#cfb53b' }] }, options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true } }, plugins: { legend: { display: false }, tooltip: { callbacks: { afterLabel: (context) => { const maints = maintHistory.filter(m => m.date === context.label); return maints.length > 0 ? maints.map(m => `Maintenance: ${m.type}`).join('\n') : ''; } } }, zoom: { zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'xy' }, pan: { enabled: true, mode: 'xy' } } } } });
 }
+
+function downloadBackup() {
+    const filename = `armorlog-backup-${new Date().toISOString().split('T')[0]}.json`;
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+}
+
+function restoreBackup() {
+    document.getElementById('restore-file-input').click();
+}
+
+async function handleRestoreFile(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+        try {
+            const restoredData = JSON.parse(e.target.result);
+            if (!restoredData.guns || !Array.isArray(restoredData.guns)) {
+                throw new Error('Invalid backup file format: missing guns array.');
+            }
+
+            if (confirm('WARNING: This will overwrite all current data. Are you absolutely sure you want to proceed?')) {
+                data = migrateData(restoredData);
+                await save();
+                alert('Data restored successfully.');
+                location.reload();
+            }
+        } catch (err) {
+            console.error('Restore failed:', err);
+            alert('Restore failed: ' + err.message);
+        }
+        event.target.value = ''; // Reset input
+    };
+    reader.readAsText(file);
+}
+
 load();

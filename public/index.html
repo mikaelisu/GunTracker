@@ -167,6 +167,18 @@
                     </div>
                     <div id="caliber-list-mgmt" style="max-height:400px; overflow-y:auto;"></div>
                 </div>
+                <div class="card">
+                    <h2>Data Management</h2>
+                    <div style="display:flex; flex-direction:column; gap:10px;">
+                        <button onclick="downloadBackup()" style="width:100%;">Download Backup (.json)</button>
+                        <hr style="border-color:#333; margin:5px 0;">
+                        <button class="secondary" onclick="restoreBackup()" style="width:100%;">Restore Backup from File</button>
+                        <input type="file" id="restore-file-input" style="display:none;" accept=".json" onchange="handleRestoreFile(event)">
+                        <p style="font-size:0.8em; color:var(--text-muted); margin:0;">
+                            <strong>Note:</strong> Restoring will overwrite all current data. It is recommended to download a backup first.
+                        </p>
+                    </div>
+                </div>
             </div>
         </div>
 
