@@ -178,6 +178,7 @@ function switchTab(tabId) {
     if (btn) btn.classList.add('active');
     document.getElementById(tabId).classList.add('active');
     if (tabId === 'dashboard' || tabId === 'ammodashboard') updateCharts();
+    if (tabId === 'valuation') updateValuationCharts();
     if (tabId === 'datatable') renderDataTable();
     if (tabId === 'settings') renderSettings();
 }
@@ -721,6 +722,7 @@ function render() {
     const gunQuery = (document.getElementById('gun-search')?.value || '').toLowerCase(), supQuery = (document.getElementById('suppressor-search')?.value || '').toLowerCase(), ammoQuery = (document.getElementById('ammo-search')?.value || '').toLowerCase(), optQuery = (document.getElementById('optic-search')?.value || '').toLowerCase();
     if (document.getElementById('settings').classList.contains('active')) renderSettings();
     if (document.getElementById('datatable').classList.contains('active')) renderDataTable();
+    if (document.getElementById('valuation').classList.contains('active')) updateValuationCharts();
     
     // Grouped rendering for guns
     const types = ['Rifle', 'Pistol', 'Shotgun'];
@@ -792,3 +794,92 @@ function showTrend(gunId) {
     charts.trend = new Chart(document.getElementById('trendChart').getContext('2d'), { type: 'line', data: { labels: labels, datasets: [{ label: 'Cumulative Rounds', data: points, borderColor: '#cfb53b', backgroundColor: 'rgba(207, 181, 59, 0.1)', fill: true, tension: 0.1, pointRadius: 4, pointBackgroundColor: (context) => maintHistory.some(m => m.date === context.chart.data.labels[context.dataIndex]) ? '#cf6679' : '#cfb53b', pointBorderColor: (context) => maintHistory.some(m => m.date === context.chart.data.labels[context.dataIndex]) ? '#fff' : '#cfb53b' }] }, options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true } }, plugins: { legend: { display: false }, tooltip: { callbacks: { afterLabel: (context) => { const maints = maintHistory.filter(m => m.date === context.label); return maints.length > 0 ? maints.map(m => `Maintenance: ${m.type}`).join('\n') : ''; } } }, zoom: { zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'xy' }, pan: { enabled: true, mode: 'xy' } } } } });
 }
 load();
+
+function updateValuationCharts() {
+    const totalGuns = data.guns.reduce((sum, g) => sum + (Number(g.purchaseCost) || 0), 0);
+    const totalSups = data.suppressors.reduce((sum, s) => sum + (Number(s.purchaseCost) || 0), 0);
+    const totalOptics = data.optics.reduce((sum, o) => sum + (Number(o.purchaseCost) || 0), 0);
+    const grandTotal = totalGuns + totalSups + totalOptics;
+
+    const formatter = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
+
+    document.getElementById('val-total').innerText = formatter.format(grandTotal);
+    document.getElementById('val-guns').innerText = formatter.format(totalGuns);
+    document.getElementById('val-sups').innerText = formatter.format(totalSups);
+    document.getElementById('val-optics').innerText = formatter.format(totalOptics);
+
+    const ctxPie = document.getElementById('valuePieChart')?.getContext('2d');
+    const ctxBar = document.getElementById('valueBarChart')?.getContext('2d');
+
+    if (!ctxPie || !ctxBar) return;
+
+    if (charts.valPie) charts.valPie.destroy();
+    if (charts.valBar) charts.valBar.destroy();
+
+    charts.valPie = new Chart(ctxPie, {
+        type: 'doughnut',
+        data: {
+            labels: ['Firearms', 'Suppressors', 'Optics'],
+            datasets: [{
+                data: [totalGuns, totalSups, totalOptics],
+                backgroundColor: ['#cfb53b', '#03dac6', '#bb86fc']
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { position: 'bottom', labels: { color: '#e0e0e0' } }
+            }
+        }
+    });
+
+    // Combine all items for top 10
+    const allItems = [
+        ...data.guns.map(g => ({ name: `${g.manufacturer} ${g.model}`, cost: Number(g.purchaseCost) || 0, type: 'Firearm' })),
+        ...data.suppressors.map(s => ({ name: `${s.manufacturer} ${s.model}`, cost: Number(s.purchaseCost) || 0, type: 'Suppressor' })),
+        ...data.optics.map(o => ({ name: `${o.manufacturer} ${o.model}`, cost: Number(o.purchaseCost) || 0, type: 'Optic' }))
+    ];
+
+    const top10 = allItems
+        .filter(item => item.cost > 0)
+        .sort((a, b) => b.cost - a.cost)
+        .slice(0, 10);
+
+    charts.valBar = new Chart(ctxBar, {
+        type: 'bar',
+        data: {
+            labels: top10.map(i => i.name),
+            datasets: [{
+                label: 'Cost',
+                data: top10.map(i => i.cost),
+                backgroundColor: '#cfb53b'
+            }]
+        },
+        options: {
+            indexAxis: 'y',
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            return formatter.format(context.raw);
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    ticks: { color: '#e0e0e0', callback: value => formatter.format(value) },
+                    grid: { color: '#333' }
+                },
+                y: {
+                    ticks: { color: '#e0e0e0' },
+                    grid: { display: false }
+                }
+            }
+        }
+    });
+}

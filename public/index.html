@@ -21,6 +21,7 @@
             <button class="tab-btn" onclick="switchTab('datatable')">Data Table</button>
             <button class="tab-btn" onclick="switchTab('dashboard')">Gun Dashboard</button>
             <button class="tab-btn" onclick="switchTab('ammodashboard')">Ammo Dashboard</button>
+            <button class="tab-btn" onclick="switchTab('valuation')">Valuation Dashboard</button>
             <button class="tab-btn" onclick="switchTab('settings')">Settings</button>
         </nav>
 
@@ -105,6 +106,46 @@
                         </thead>
                         <tbody id="table-body"></tbody>
                     </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Valuation Tab -->
+        <div id="valuation" class="tab-content">
+            <div class="card" style="margin-bottom: 20px;">
+                <h2>Financial Overview</h2>
+                <div class="grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); text-align: center;">
+                    <div style="padding: 20px; background: #252525; border-radius: 8px;">
+                        <span style="display: block; color: var(--text-muted); font-size: 0.9em; margin-bottom: 5px;">Total Investment</span>
+                        <strong id="val-total" style="font-size: 1.8em; color: var(--accent);">$0.00</strong>
+                    </div>
+                    <div style="padding: 20px; background: #252525; border-radius: 8px;">
+                        <span style="display: block; color: var(--text-muted); font-size: 0.9em; margin-bottom: 5px;">Firearms</span>
+                        <strong id="val-guns" style="font-size: 1.5em;">$0.00</strong>
+                    </div>
+                    <div style="padding: 20px; background: #252525; border-radius: 8px;">
+                        <span style="display: block; color: var(--text-muted); font-size: 0.9em; margin-bottom: 5px;">Suppressors</span>
+                        <strong id="val-sups" style="font-size: 1.5em;">$0.00</strong>
+                    </div>
+                    <div style="padding: 20px; background: #252525; border-radius: 8px;">
+                        <span style="display: block; color: var(--text-muted); font-size: 0.9em; margin-bottom: 5px;">Optics</span>
+                        <strong id="val-optics" style="font-size: 1.5em;">$0.00</strong>
+                    </div>
+                </div>
+            </div>
+
+            <div class="grid">
+                <div class="card">
+                    <h2>Investment by Category</h2>
+                    <div style="height: 400px; position: relative;">
+                        <canvas id="valuePieChart"></canvas>
+                    </div>
+                </div>
+                <div class="card">
+                    <h2>Top 10 Most Expensive Items</h2>
+                    <div style="height: 400px; position: relative;">
+                        <canvas id="valueBarChart"></canvas>
+                    </div>
                 </div>
             </div>
         </div>
