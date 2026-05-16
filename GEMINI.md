@@ -41,8 +41,9 @@ The application uses a hybrid configuration approach to protect privacy:
 The server prioritizes values in this order: `.env` > `config.json` > Defaults.
 
 ### Testing
-- **Backend:** Verify that `data.json` is created/updated upon saving.
+- **Backend:** Verify that the JSON data file is created/updated accurately upon saving.
 - **Frontend:** Ensure the UI correctly reflects data fetched from the `/api/data` endpoint.
+- **Data Integrity:** **CRITICAL:** After making any structural or UI changes, you MUST verify that existing data properties (like custom calibers, pre-existing round counts, battery dates, and serial numbers) are not inadvertently lost, overwritten, or corrupted by migration logic or form submissions.
 
 ## Development Conventions
 - **Client-Server Communication:** The frontend uses `fetch()` to interact with the backend API (`/api/data`).
